@@ -1,0 +1,14 @@
+{
+  "name": "handmark.io",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Password-protected proof of concept for Handmark, a human-crafted verification subscription.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" class="theme-night">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Handmark Access | Human-Made Work Verification</title>
+    <meta name="description" content="Private access to the Handmark proof of concept for human-made work verification.">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" href="/assets/handmark-symbol.svg?v=20260603-2" type="image/svg+xml">
+    <meta name="theme-color" content="#000000">
+    <link rel="stylesheet" href="/styles.css?v=20260603-2">
+  </head>
+  <body class="login-screen">
+    <main class="login-shell">
+      <section class="login-panel" aria-labelledby="login-title">
+        <div class="login-brand">
+          <img class="login-mark" src="/assets/handmark-logo.svg?v=20260603-2" alt="">
+          <span>handmark</span>
+        </div>
+        <p class="eyebrow">Private proof of concept</p>
+        <h1 id="login-title">Human-made work, verified.</h1>
+        <p class="login-copy">A controlled preview of the Handmark trust mark, application flow, and subscriber review standard.</p>
+        <form class="login-form" method="post" action="/login">
+          <label for="password">Access password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+          <p class="login-error" data-error>Incorrect password. Try again.</p>
+          <button class="button button-primary" type="submit">Enter Handmark</button>
+        </form>
+      </section>
+      <p class="login-footnote">Handmark.io</p>
+    </main>
+    <script>
+      const hasError = new URLSearchParams(window.location.search).has("error");
+      document.documentElement.toggleAttribute("data-login-error", hasError);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Handmark symbol</title>
+  <desc id="desc">A simplified hand mark with a circular palm.</desc>
+  <g fill="none" stroke="#f6f1e8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 24v13c0 13 9 22 22 22 10 0 18-8 18-18V25" stroke-width="4.7"/>
+    <path d="M18 24v-2" stroke-width="4.7"/>
+    <path d="M26 39V9" stroke-width="5.4"/>
+    <path d="M34 39V6" stroke-width="5.4"/>
+    <path d="M42 39V10" stroke-width="5.4"/>
+    <path d="M50 38V17" stroke-width="5.4"/>
+    <path d="M22 46c3 6 9 10 17 9" stroke-width="3.8"/>
+    <circle cx="34" cy="42" r="7.5" stroke-width="4.2"/>
+    <circle cx="34" cy="42" r="2.1" fill="#f6f1e8" stroke="none"/>
+  </g>
+</svg>
