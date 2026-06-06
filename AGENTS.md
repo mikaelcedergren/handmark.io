@@ -1,6 +1,6 @@
 # Handmark.io — Agent Entry Point
 
-## North Star
+## North Star!
 
 Handmark is a proof-of-concept public sales site and application flow for a selective trust mark: verification that work was made by a human.
 
