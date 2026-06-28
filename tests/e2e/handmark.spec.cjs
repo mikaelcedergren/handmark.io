@@ -1,7 +1,8 @@
-const { test, expect } = require("/Users/cortex/Development/cortex/node_modules/@playwright/test");
+const { test, expect } = require("@playwright/test");
 const fs = require("node:fs/promises");
 
 const baseUrl = "http://127.0.0.1:3000";
+const password = process.env.HANDMARK_TEST_PASSWORD || "handmark-dev-password";
 
 test.afterAll(async () => {
   await fs.rm("/Users/cortex/Development/handmark.io/data/applications.json", {
@@ -35,7 +36,7 @@ test("Handmark night-mode membership flow", async ({ page, request }) => {
     fullPage: true
   });
 
-  await page.getByLabel("Access password").fill("Wolfentastic-1");
+  await page.getByLabel("Access password").fill(password);
   await page.getByRole("button", { name: "Enter Handmark" }).click();
   await expect(page).toHaveURL(`${baseUrl}/`);
   await page.setViewportSize({ width: 2048, height: 1152 });

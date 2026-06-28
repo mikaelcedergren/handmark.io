@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo="/Users/cortex/Development/handmark.io"
+label="com.handmark.server"
+plist="$repo/launchd/$label.plist"
+target="/Library/LaunchDaemons/$label.plist"
+
+mkdir -p "$repo/.run"
+plutil -lint "$plist"
+if launchctl print "system/$label" >/dev/null 2>&1; then
+  sudo launchctl bootout system "$target" || true
+fi
+sudo install -o root -g wheel -m 0644 "$plist" "$target"
+sudo launchctl bootstrap system "$target"
+sudo launchctl kickstart -k "system/$label"
+launchctl print "system/$label" | grep -E 'state =|pid =' || true

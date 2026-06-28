@@ -1,0 +1,4 @@
+// Shared Cortex framework base. Handmark keeps its own brand layer in public/styles.css.
+@use '@mikaelcedergren/cx-framework/tokens';
+@use '@mikaelcedergren/cx-framework/styles/base';
+@use '@mikaelcedergren/cx-framework/styles/utilities';

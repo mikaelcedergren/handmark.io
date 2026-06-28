@@ -1,32 +1,33 @@
-# Handmark.io Domain Setup
+# Handmark.io domain setup
 
 This guide keeps the existing servers on this computer as the priority. Do not stop nginx, Plex, the existing Node services, or anything else already listening on a port.
 
-Current Handmark setup:
+Current Handmark setup, updated after static-IP HTTPS go-live:
 
 - Repo: `/Users/cortex/Development/handmark.io`
 - Local app: `http://127.0.0.1:3000`
-- Public front door already in use: nginx on port `80`
-- Preferred routing model: GoDaddy DNS -> this computer's public IP -> router -> nginx -> Handmark app
-- Current public IPv4 seen from this computer: `155.4.129.219`
-- Current LAN IP for this computer: `192.168.1.74`
+- Public front door: nginx on ports `80` and `443`
+- Routing model: GoDaddy DNS -> `81.170.132.41` -> router TCP 80/443 -> nginx -> `127.0.0.1:3000`
+- Current LAN IP for this computer: `192.168.1.73`
 - Router/default gateway: `192.168.1.1`
+- Public domains: `https://handmark.io`, `https://www.handmark.io`
+- Service: `com.handmark.server`
+- HTTPS: live through nginx; certificate renewal is handled by `com.cortex.cert-renewal`
 
 Current DNS state:
 
-- `handmark.io` uses GoDaddy nameservers: `ns01.domaincontrol.com`, `ns02.domaincontrol.com`
-- `handmark.io` currently points to GoDaddy parked-site IPs: `13.248.243.5`, `76.223.105.230`
-- `www.handmark.io` is already a CNAME to `handmark.io`
-- `localgate.io` uses Cloudflare nameservers: `annalise.ns.cloudflare.com`, `trevor.ns.cloudflare.com`
-- `localgate.io` is Cloudflare-fronted through a Cloudflare Tunnel, then nginx routes it to `127.0.0.1:8080`
-- `jordan.localgate.io` is Cloudflare-fronted and nginx routes it to `127.0.0.1:4010`
+- `handmark.io` uses GoDaddy/domaincontrol nameservers.
+- `@` should be an `A` record pointing to `81.170.132.41`.
+- `www` should be a `CNAME` pointing to `handmark.io`.
+- Keep unrelated mail records if they are added later.
+- Cloudflared is not used; keep this domain on the direct static-IP nginx path.
 
 ## 1. Keep Handmark on a local-only port
 
 Start Handmark on localhost only:
 
 ```bash
-npm start
+pnpm start
 ```
 
 The server defaults to:
@@ -38,48 +39,19 @@ PORT=3000
 
 This means the app does not compete with nginx on port `80` and is not directly exposed to the public internet.
 
-## 2. Add an nginx virtual host
+## 2. nginx virtual host
 
-Use the example in `ops/handmark.nginx.conf.example`.
-
-Active nginx path on this computer:
-
-```text
-/opt/homebrew/etc/nginx/nginx.conf
-```
-
-That file includes:
-
-```nginx
-include servers/*;
-```
-
-So the Handmark config should be added as:
+The active nginx config is:
 
 ```text
 /opt/homebrew/etc/nginx/servers/handmark.io.conf
 ```
 
-The important part is:
+It should keep ACME open on HTTP, redirect normal HTTP traffic to HTTPS, terminate TLS on port `443`, and proxy only to `127.0.0.1:3000`.
 
-```nginx
-server {
-  listen 80;
-  server_name handmark.io www.handmark.io;
+Do not edit unrelated server blocks.
 
-  location / {
-    proxy_pass http://127.0.0.1:3000;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-}
-```
-
-Add this as a new nginx site or server block. Do not edit unrelated server blocks.
-
-After adding it, validate nginx before reloading:
+After changes, validate nginx before reloading:
 
 ```bash
 /opt/homebrew/bin/nginx -t
@@ -101,16 +73,16 @@ Set these records:
 
 | Type | Name | Value | TTL |
 | --- | --- | --- | --- |
-| A | @ | `155.4.129.219` | 600 seconds or GoDaddy default |
+| A | @ | `81.170.132.41` | GoDaddy default |
 | CNAME | www | `handmark.io` | 600 seconds or GoDaddy default |
 
 Notes:
 
 - Keep email records such as `MX`, `TXT`, `SPF`, `DKIM`, and `DMARC`.
-- Remove the existing GoDaddy parked-site `A` records for `@`: `13.248.243.5` and `76.223.105.230`.
+- Remove any GoDaddy parked-site `A` records for `@`, such as `13.248.243.5` and `76.223.105.230`, if they reappear.
 - Keep the existing `www` CNAME if it already points to `handmark.io`.
 - A `CNAME` points to another name, not an IP address.
-- Keep the nameservers as GoDaddy's current nameservers: `ns01.domaincontrol.com`, `ns02.domaincontrol.com`.
+- Keep the nameservers as GoDaddy/domaincontrol nameservers unless a deliberate exception is documented.
 
 GoDaddy references:
 
@@ -123,29 +95,24 @@ On the router, forward:
 
 | Public port | Protocol | Destination |
 | --- | --- | --- |
-| 80 | TCP | `192.168.1.74` |
-| 443 | TCP | `192.168.1.74` |
+| 80 | TCP | `192.168.1.73` |
+| 443 | TCP | `192.168.1.73` |
 
 Make this computer's LAN IP stable with a DHCP reservation so the router does not start forwarding to the wrong machine later.
 
 ## 5. Add HTTPS
 
-After DNS reaches nginx and port `80` works, add a TLS certificate for:
+HTTPS is already live for `handmark.io` and `www.handmark.io`. Renewal is handled by `com.cortex.cert-renewal`.
 
-```text
-handmark.io
-www.handmark.io
-```
-
-Use the certificate method that already fits this computer's nginx setup. Certbot with nginx is the common path. Do not install a second front-facing proxy on ports `80` or `443` unless you intentionally replace the existing nginx setup.
+For future certificate changes, keep using the shared certbot/nginx setup. Do not install a second front-facing proxy on ports `80` or `443` unless you intentionally replace the existing nginx setup.
 
 ## 6. Verify
 
 From any machine:
 
 ```bash
-curl -I http://handmark.io
-curl -I http://www.handmark.io
+curl -I https://handmark.io
+curl -I https://www.handmark.io
 ```
 
 Expected result before login:
@@ -158,14 +125,10 @@ Location: /login
 Then open:
 
 ```text
-http://handmark.io
+https://handmark.io
 ```
 
-Use the proof-of-concept password:
-
-```text
-Wolfentastic-1
-```
+Use the password configured in `.env` as `HANDMARK_PASSWORD`. Do not put the password in launchd, nginx, docs, or tests.
 
 ## 7. GitHub
 
@@ -175,6 +138,9 @@ Use GitHub like this:
 
 1. Push this repo to `mikaelcedergren/handmark.io`.
 2. Pull updates on this computer.
-3. Restart only the Handmark app process when the app changes.
+3. Install dependencies only if package files changed.
+4. Build if the Angular app changed.
+5. Restart only the Handmark app process when the served output or server process changes.
+6. Verify local health and public HTTPS.
 
 Do not configure GitHub Pages for this proof of concept unless you decide to move away from the local Node server. GitHub Pages cannot run this local application API or save applications to `data/applications.jsonl`.

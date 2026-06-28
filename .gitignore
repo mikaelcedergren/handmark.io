@@ -5,3 +5,7 @@ data/*.json
 data/*.jsonl
 !data/.gitkeep
 test-results/
+dist/
+.angular/
+.run/
+coverage/

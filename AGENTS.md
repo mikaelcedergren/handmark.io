@@ -21,24 +21,25 @@ The public page should feel like the front door of a coherent company, not a dem
 
 ## Runtime
 
-This repo intentionally has no external runtime dependencies.
+This repo now follows the shared Mac mini website standard.
 
-- App entry: `server.mjs`
-- Static files: `public/`
+- App entry: `server/index.mjs`
+- Angular source: `src/`
+- Static public assets and login page: `public/`
 - Application data: `data/applications.jsonl`
 - Default local server: `http://127.0.0.1:3000`
-- Default proof-of-concept password: `Wolfentastic-1`
+- Password is read from `HANDMARK_PASSWORD` in `.env`; do not place it in launchd or docs.
 
 Run locally:
 
 ```bash
-npm start
+pnpm start
 ```
 
 Production-like local run:
 
 ```bash
-PORT=3000 HOST=127.0.0.1 HANDMARK_PASSWORD='Wolfentastic-1' SESSION_SECRET='change-me-to-a-long-secret' npm start
+PORT=3000 HOST=127.0.0.1 HANDMARK_PASSWORD='replace-with-a-strong-password' SESSION_SECRET='change-me-to-a-long-secret' pnpm start
 ```
 
 Keep `HOST=127.0.0.1` unless there is a deliberate reason to expose the Node app directly. Public traffic should reach nginx first.
@@ -132,11 +133,11 @@ Read those files only; do not edit that repo.
 
 ## Key Files
 
-- `server.mjs` — Node HTTP server, login/session handling, protected routes, application API.
-- `public/index.html` — protected sales page.
+- `server/index.mjs` — Express server, login/session handling, protected routes, application API.
+- `src/app/app.component.html` — protected sales page template.
+- `src/app/app.component.ts` — menu and application submission behavior.
 - `public/login.html` — password gate.
 - `public/styles.css` — full visual system for the page and login screen.
-- `public/app.js` — responsive menu and application submission.
 - `public/assets/handmark-logo.svg` — nav/login mark.
 - `public/assets/handmark-symbol.svg` — light-background symbol.
 - `public/assets/handmark-stamp.svg` — circular verification stamp.
@@ -148,23 +149,23 @@ Read those files only; do not edit that repo.
 
 ## Application Flow Notes
 
-The application form asks for the applicant, contact preference, brand/work name, kind of work, public URL, craft summary, proof links, and optional walkthrough preference. `public/app.js` still fills a few backend defaults for the proof of concept:
+The application form asks for the applicant, contact preference, brand/work name, kind of work, public URL, craft summary, proof links, and optional walkthrough preference. `src/app/app.component.ts` fills a few backend defaults for the proof of concept:
 
 - `billingCycle` defaults to `monthly`
 - `paymentPreference` defaults to `after-approval`
 
 The applicant must provide `contactPreference`, `brand`, and `category`. Direct contact is part of approval, so do not remove the contact field unless the review process changes. `walkthroughPreference` is optional but should be saved when present.
 
-If you change the form, keep `public/app.js`, `server.mjs`, and `tests/e2e/handmark.spec.cjs` aligned. The server still validates required fields before writing an application.
+If you change the form, keep `src/app/app.component.*`, `server/index.mjs`, and `tests/e2e/handmark.spec.cjs` aligned. The server still validates required fields before writing an application.
 
 ## Verification
 
 Use Playwright for UI verification. Do not claim a visual change is verified unless you actually ran it or explicitly say you could not.
 
-This repo does not currently install Playwright locally. Use the existing Cortex install:
+Run the local Playwright script after starting the server with a known test password:
 
 ```bash
-/Users/cortex/Development/cortex/node_modules/.bin/playwright test tests/e2e/handmark.spec.cjs --reporter=line --workers=1
+HANDMARK_TEST_PASSWORD=handmark-dev-password pnpm e2e
 ```
 
 The test covers:
@@ -209,7 +210,7 @@ Expected localgate behavior is separate from Handmark. Do not "fix" localgate wh
 
 ## Implementation Preferences
 
-- Keep this repo simple. Do not add a build system, framework, package manager, or dependency unless it clearly improves the proof of concept.
+- Keep this repo aligned with the shared Angular/Cortex-framework/server standard. Do not add one-off runtime patterns.
 - Prefer small, direct Node and static-file changes.
 - Keep edits scoped to Handmark files.
 - Keep comments sparse and useful.

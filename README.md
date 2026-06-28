@@ -4,11 +4,11 @@ Handmark is a proof-of-concept review and subscription site for verifying work t
 
 ## What is included
 
-- Password gate using `Wolfentastic-1` by default.
-- Protected one-page sales site.
+- Password gate backed by `HANDMARK_PASSWORD` in `.env`.
+- Angular sales site served by the standard local Express server.
 - Pricing and human-review application flow.
 - Local application storage in `data/applications.jsonl`.
-- No external runtime dependencies.
+- Runtime secrets are read from `.env`; launchd only stores non-secret process settings.
 
 ## Review and pricing model
 
@@ -21,7 +21,7 @@ Handmark is a proof-of-concept review and subscription site for verifying work t
 ## Run locally
 
 ```bash
-npm start
+pnpm start
 ```
 
 Open `http://localhost:3000` and enter the password.
@@ -29,7 +29,7 @@ Open `http://localhost:3000` and enter the password.
 For a production-like local run:
 
 ```bash
-PORT=3000 HOST=127.0.0.1 HANDMARK_PASSWORD='Wolfentastic-1' SESSION_SECRET='change-me-to-a-long-secret' npm start
+PORT=3000 HOST=127.0.0.1 HANDMARK_PASSWORD='replace-with-a-strong-password' SESSION_SECRET='change-me-to-a-long-secret' pnpm start
 ```
 
 If `NODE_ENV=production`, `SESSION_SECRET` must be set. The server refuses to start with the development default.
@@ -49,18 +49,24 @@ Short version:
 4. Forward router ports `80` and `443` to this computer.
 5. Add HTTPS after the domain reaches nginx.
 
-## GitHub setup
-
-After the first commit, push the repo:
-
-```bash
-git add .
-git commit -m "Build Handmark proof of concept"
-git push -u origin main
-```
-
-On the server computer, keep this checkout updated with `git pull`, then restart the app.
-
 ## Real payment next step
 
 The current form records an application and selected review path. To charge the review fee or subscription, add Stripe Checkout or another payment provider. Do not collect raw card details in this app.
+
+## Build and verify
+
+```bash
+pnpm install
+pnpm build
+pnpm start
+```
+
+For browser verification, start the server with a test password and run:
+
+```bash
+HANDMARK_TEST_PASSWORD=handmark-dev-password pnpm e2e
+```
+
+## Server standard
+
+Handmark now follows the shared Mac mini standard: Angular frontend, local Express server, `127.0.0.1:3000`, nginx as the public gateway, `.run/` logs, and a source-controlled launch daemon template in `launchd/com.handmark.server.plist`.
