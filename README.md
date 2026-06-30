@@ -1,6 +1,6 @@
 # Handmark.io
 
-Handmark is a proof-of-concept review and subscription site for verifying work that is actually crafted by a human.
+Handmark is a protected early review and subscription product for verifying work that is actually crafted by a human.
 
 ## What is included
 
@@ -24,7 +24,7 @@ Handmark is a proof-of-concept review and subscription site for verifying work t
 pnpm start
 ```
 
-Open `http://localhost:3000` and enter the password.
+Open `http://127.0.0.1:3000` and enter the password.
 
 For a production-like local run:
 
@@ -34,20 +34,9 @@ PORT=3000 HOST=127.0.0.1 HANDMARK_PASSWORD='replace-with-a-strong-password' SESS
 
 If `NODE_ENV=production`, `SESSION_SECRET` must be set. The server refuses to start with the development default.
 
-## Domain setup with GoDaddy
+## Domain and hosting
 
-GitHub stores the code, but DNS should point to the computer that is running the server.
-This computer already has nginx listening on port `80`, so Handmark should stay on `127.0.0.1:3000` and nginx should proxy only `handmark.io` traffic to it.
-
-The full low-risk guide is in `DOMAIN_SETUP.md`.
-
-Short version:
-
-1. Point GoDaddy DNS `@` to your public IP address.
-2. Point GoDaddy DNS `www` to `@` with a CNAME.
-3. Add an nginx virtual host for `handmark.io` that proxies to `127.0.0.1:3000`.
-4. Forward router ports `80` and `443` to this computer.
-5. Add HTTPS after the domain reaches nginx.
+Handmark is live on HTTPS at `handmark.io` via the shared static-IP nginx path (`DNS -> 81.170.132.41 -> router 80/443 -> nginx -> 127.0.0.1:3000`). Repo-specific routing values are in [`DOMAIN_SETUP.md`](DOMAIN_SETUP.md); the shared go-live procedure is in the root [`GO-LIVE.md`](../GO-LIVE.md).
 
 ## Real payment next step
 

@@ -1,16 +1,16 @@
 # Handmark.io — Agent Entry Point
 
-## North Star!
+## North star!
 
-Handmark is a proof-of-concept public sales site and application flow for a selective trust mark: verification that work was made by a human.
+Handmark is a protected early product and application flow for a selective trust mark: verification that work was made by a human.
 
 The brand idea is not "anti-tooling" for its own sake. Handmark validates human authorship, human effort, and human care. A person must still be responsible for the meaningful decisions behind the work. No one should receive the mark unless they prove, to a satisfactory standard, that the work is human-made and has no substantial AI replacing the authorship.
 
 The public page should feel like the front door of a coherent company, not a demo. It must sell the concept clearly: human stuff for humans, backed by rigorous review.
 
-## Current Product Shape
+## Current product shape
 
-- One password-protected proof of concept.
+- One password-protected early product.
 - One public sales page after login.
 - One initial review path: `$99` human review, followed by `$79/mo` membership only if approved.
 - One application flow, stored locally.
@@ -44,17 +44,17 @@ PORT=3000 HOST=127.0.0.1 HANDMARK_PASSWORD='replace-with-a-strong-password' SESS
 
 Keep `HOST=127.0.0.1` unless there is a deliberate reason to expose the Node app directly. Public traffic should reach nginx first.
 
-## Hosting And Domain Reality
+## Hosting and domain reality
 
-This computer runs several higher-priority services. Handmark is low priority. Do not interrupt existing servers.
+Handmark is live on HTTPS at `handmark.io` via the shared static-IP nginx path. Daemon `com.handmark.server` serves the app locally; nginx is the only public gateway. Do not interrupt existing servers.
 
-The intended path is:
+The live path is:
 
 ```text
-GoDaddy DNS -> this computer's public IP -> router -> nginx -> 127.0.0.1:3000
+DNS -> 81.170.132.41 -> router TCP 80/443 -> nginx -> 127.0.0.1:3000
 ```
 
-Current local routing notes are in `DOMAIN_SETUP.md`.
+Repo-specific routing values are in `DOMAIN_SETUP.md`.
 
 Important constraints:
 
@@ -65,9 +65,7 @@ Important constraints:
 - Handmark's nginx target should remain `127.0.0.1:3000`.
 - GitHub stores code; GitHub does not point the domain to this local Node API.
 
-When giving DNS instructions, verify the current public IP and DNS state first. Public IPs can change. `DOMAIN_SETUP.md` records the latest known setup, not an eternal truth.
-
-## Data, Secrets, And Git Hygiene
+## Data, secrets, and git hygiene
 
 - Secrets belong in `.env`, never in committed files.
 - `.env.example` documents expected environment keys.
@@ -77,7 +75,7 @@ When giving DNS instructions, verify the current public IP and DNS state first. 
 - The intended payment model is a `$99` review fee first, then `$79/mo` only after approval.
 - Git is read-only by default. Do not stage, commit, push, reset, checkout, merge, rebase, or stash unless the user explicitly asks.
 
-## Design Standard
+## Design standard
 
 Treat this as a professional public sales page for a company with a thought-through concept. The UI bar is high.
 
@@ -103,16 +101,14 @@ Avoid:
 
 The current logo/stamp assets in `public/assets/` are SVG interpretations of the provided handmark direction. They can be refined, but keep the identity centered on the hand/stamp idea: made by human hands.
 
-## Design-System Lessons From Neighboring Repos
+## Design-system lessons from neighboring repos
 
-Useful conventions were derived from:
+Useful conventions come from:
 
 - `/Users/cortex/Development/cortex/AGENTS.md`
 - `/Users/cortex/Development/cortex/framework/README.md`
-- `/Users/cortex/Development/easm/asm-frontend/sol-playground/README.md`
-- `/Users/cortex/Development/easm/asm-frontend/sol-playground/docs/playground-workflow.md`
-- `/Users/cortex/Development/easm/asm-frontend/sol-playground/docs/lab-component-guide.md`
-- `/Users/cortex/Development/easm/asm-frontend/sol-playground/docs/design-rules.md`
+- `/Users/cortex/Development/cortex/docs/DESIGN-SYSTEM.md`
+- `/Users/cortex/Development/cx-framework/README.md`
 
 Apply the relevant principles here:
 
@@ -123,15 +119,9 @@ Apply the relevant principles here:
 - The page is the product spec. If a visual or copy choice does not support the trust-mark concept, it probably does not belong.
 - When a feature reaches for a reusable UI pattern, create a coherent local section/component style rather than bolting ad hoc declarations onto individual elements.
 
-If user-facing UX or copy work needs a stronger rule source, consult the compiled UX foundation rules referenced by Cortex:
+If user-facing UX or copy work needs a stronger rule source, use Cortex's framework design docs and improve the shared source when a durable rule is missing.
 
-```text
-/Users/cortex/Development/ux-foundation/.ai/compiled/
-```
-
-Read those files only; do not edit that repo.
-
-## Key Files
+## Key files
 
 - `server/index.mjs` — Express server, login/session handling, protected routes, application API.
 - `src/app/app.component.html` — protected sales page template.
@@ -147,9 +137,9 @@ Read those files only; do not edit that repo.
 - `ops/handmark.nginx.conf.example` — nginx virtual host example.
 - `DOMAIN_SETUP.md` — local DNS/nginx/router setup notes.
 
-## Application Flow Notes
+## Application flow notes
 
-The application form asks for the applicant, contact preference, brand/work name, kind of work, public URL, craft summary, proof links, and optional walkthrough preference. `src/app/app.component.ts` fills a few backend defaults for the proof of concept:
+The application form asks for the applicant, contact preference, brand/work name, kind of work, public URL, craft summary, proof links, and optional walkthrough preference. `src/app/app.component.ts` fills a few backend defaults for the early product:
 
 - `billingCycle` defaults to `monthly`
 - `paymentPreference` defaults to `after-approval`
@@ -189,7 +179,13 @@ Screenshots are written to:
 /private/tmp/handmark-mobile.png
 ```
 
-## Local Service Checks
+## Local service checks
+
+The canonical health check is `/healthz` (with `/api/health` as a back-compat alias); both return a JSON health payload:
+
+```bash
+curl -s http://127.0.0.1:3000/healthz
+```
 
 Useful checks:
 
@@ -199,7 +195,7 @@ curl -s -I -H 'Host: handmark.io' http://127.0.0.1/
 curl -s -I -H 'Host: localgate.io' http://127.0.0.1/
 ```
 
-Expected Handmark behavior before login:
+Expected Handmark behavior before login (app-level check):
 
 ```text
 HTTP 302
@@ -208,7 +204,7 @@ Location: /login
 
 Expected localgate behavior is separate from Handmark. Do not "fix" localgate while working on Handmark unless the user specifically asks.
 
-## Implementation Preferences
+## Implementation preferences
 
 - Keep this repo aligned with the shared Angular/Cortex-framework/server standard. Do not add one-off runtime patterns.
 - Prefer small, direct Node and static-file changes.
@@ -219,7 +215,7 @@ Expected localgate behavior is separate from Handmark. Do not "fix" localgate wh
 - When changing the UI, update tests if the public contract changed.
 - When changing domain/server setup, update `DOMAIN_SETUP.md`.
 
-## Product Copy Guidance
+## Product copy guidance
 
 Handmark should sound calm, serious, and human.
 
