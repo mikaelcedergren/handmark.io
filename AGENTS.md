@@ -103,6 +103,13 @@ The current logo/stamp assets in `public/assets/` are SVG interpretations of the
 
 ## Design-system lessons from neighboring repos
 
+Handmark sits in the **Cortex -> cx-framework -> projects** loop. Cortex authors the reusable
+framework pieces: components, tokens, AI skills, guidelines, and design-system decisions.
+`cx-framework` packages them, and Handmark consumes only `@mikaelcedergren/cx-framework`. Do not
+reference Cortex directly through imports, package deps, scripts, styles, local paths, or copied
+source. If Handmark exposes a reusable UI gap, fix it in Cortex, package/push `cx-framework`, then
+update Handmark from the package.
+
 Useful conventions come from:
 
 - `/Users/cortex/Development/cortex/AGENTS.md`
