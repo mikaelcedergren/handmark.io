@@ -1,16 +1,16 @@
 const { test, expect } = require("@playwright/test");
 const fs = require("node:fs/promises");
+const path = require("node:path");
 
 const baseUrl = "http://127.0.0.1:3000";
 const password = process.env.HANDMARK_TEST_PASSWORD || "handmark-dev-password";
+// The intake files live in the repo's own data/, resolved from this spec's location so the
+// suite works on the production Mac mini and on a development mirror alike.
+const dataDir = path.resolve(__dirname, "..", "..", "data");
 
 test.afterAll(async () => {
-  await fs.rm("/Users/cortex/Development/handmark.io/data/applications.json", {
-    force: true
-  });
-  await fs.rm("/Users/cortex/Development/handmark.io/data/applications.jsonl", {
-    force: true
-  });
+  await fs.rm(path.join(dataDir, "applications.json"), { force: true });
+  await fs.rm(path.join(dataDir, "applications.jsonl"), { force: true });
 });
 
 test("Handmark night-mode membership flow", async ({ page, request }) => {
@@ -139,12 +139,36 @@ test("Handmark night-mode membership flow", async ({ page, request }) => {
   await page.getByRole("button", { name: "Apply for review" }).click();
   await expect(page.locator("#form-status")).toContainText("Application HM-");
   const savedApplications = await fs.readFile(
-    "/Users/cortex/Development/handmark.io/data/applications.jsonl",
+    path.join(dataDir, "applications.jsonl"),
     "utf8"
   );
   expect(savedApplications).toContain('"contactPreference":"Email first, then video call"');
   expect(savedApplications).toContain('"brand":"Playwright Maker Studio"');
   expect(savedApplications).toContain('"walkthroughPreference":"Video call"');
+
+  const basePayload = {
+    plan: "verification",
+    agree: true,
+    name: "Playwright Maker",
+    email: "maker@example.com",
+    contactPreference: "Email first, then video call",
+    brand: "Playwright Maker Studio",
+    category: "Furniture",
+    website: "https://example.com",
+    craftSummary: "A human-authored craft process verified through Playwright.",
+    proofLinks: "https://example.com/proof",
+    paymentPreference: "after-approval"
+  };
+  const missingWebsite = await page.request.post(`${baseUrl}/api/apply`, {
+    data: { ...basePayload, website: "" }
+  });
+  expect(missingWebsite.status()).toBe(400);
+  expect((await missingWebsite.json()).message).toBe("website is required.");
+  const badEmail = await page.request.post(`${baseUrl}/api/apply`, {
+    data: { ...basePayload, email: "not-an-email" }
+  });
+  expect(badEmail.status()).toBe(400);
+  expect((await badEmail.json()).message).toBe("Enter a valid email address.");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle" });

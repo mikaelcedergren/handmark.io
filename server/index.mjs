@@ -204,9 +204,17 @@ function cleanupRateBuckets(now) {
   }
 }
 
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
 function requireField(payload, field) {
   const value = String(payload[field] || '').trim();
   if (!value) throw new Error(`${field} is required.`);
+  return value;
+}
+
+function requireEmail(payload) {
+  const value = requireField(payload, 'email');
+  if (!EMAIL_PATTERN.test(value)) throw new Error('Enter a valid email address.');
   return value;
 }
 
@@ -228,13 +236,13 @@ async function handleApplication(req, res) {
       plan,
       billingCycle: String(payload.billingCycle || 'monthly'),
       name: requireField(payload, 'name'),
-      email: requireField(payload, 'email'),
+      email: requireEmail(payload),
       contactPreference: requireField(payload, 'contactPreference'),
       brand: requireField(payload, 'brand'),
-      website: String(payload.website || '').trim(),
+      website: requireField(payload, 'website'),
       category: requireField(payload, 'category'),
       craftSummary: requireField(payload, 'craftSummary'),
-      proofLinks: String(payload.proofLinks || '').trim(),
+      proofLinks: requireField(payload, 'proofLinks'),
       walkthroughPreference: String(payload.walkthroughPreference || '').trim(),
       paymentPreference: requireField(payload, 'paymentPreference'),
     };
