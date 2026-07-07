@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "handmark",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/index.mjs"],
+      "port": 3000,
+      "env": {
+        "PORT": "3000",
+        "HOST": "127.0.0.1",
+        "HANDMARK_PASSWORD": "handmark-dev-password",
+        "SESSION_SECRET": "local-verify-secret"
+      }
+    }
+  ]
+}

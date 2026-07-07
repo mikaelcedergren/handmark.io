@@ -8,7 +8,7 @@
     <meta name="robots" content="noindex, nofollow">
     <link rel="icon" href="/assets/handmark-symbol.svg?v=20260603-2" type="image/svg+xml">
     <meta name="theme-color" content="#000000">
-    <link rel="stylesheet" href="/styles.css?v=20260603-2">
+    <link rel="stylesheet" href="/styles.css">
   </head>
   <body class="login-screen">
     <main class="login-shell">
@@ -18,13 +18,13 @@
           <span>handmark</span>
         </div>
         <p class="eyebrow">Private proof of concept</p>
-        <h1 id="login-title">Human-made work, verified.</h1>
-        <p class="login-copy">A controlled preview of the Handmark trust mark, application flow, and subscriber review standard.</p>
+        <h1 id="login-title" class="cx-text-title-1">Human-made work, verified.</h1>
+        <p class="login-copy cx-text-body-lg cx-text-muted">A controlled preview of the Handmark trust mark, application flow, and subscriber review standard.</p>
         <form class="login-form" method="post" action="/login">
-          <label for="password">Access password</label>
-          <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
-          <p class="login-error" data-error>Incorrect password. Try again.</p>
-          <button class="button button-primary" type="submit">Enter Handmark</button>
+          <label for="password" class="login-label">Access password</label>
+          <input id="password" name="password" type="password" class="login-input" autocomplete="current-password" required autofocus>
+          <p class="login-error cx-text-body-sm" data-error>Incorrect password. Try again.</p>
+          <button type="submit" class="login-submit">Enter Handmark</button>
         </form>
       </section>
       <p class="login-footnote">Handmark.io</p>

@@ -28,7 +28,6 @@
     "@angular/platform-server": "^22.0.2",
     "@angular/router": "^22.0.2",
     "@angular/ssr": "^22.0.3",
-    "@fontsource-variable/inter": "^5.2.8",
     "@mikaelcedergren/cx-framework": "github:mikaelcedergren/cx-framework#main",
     "compression": "^1.7.5",
     "express": "^4.21.2",

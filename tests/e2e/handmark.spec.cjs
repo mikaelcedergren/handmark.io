@@ -28,7 +28,8 @@ test("Handmark night-mode membership flow", async ({ page, request }) => {
     background: getComputedStyle(document.body).backgroundColor,
     overflow: document.documentElement.scrollWidth > window.innerWidth + 1
   }));
-  expect(loginMetrics.background).toBe("rgb(5, 5, 5)");
+  // Night theme surface-mid from the framework tokens.
+  expect(loginMetrics.background).toBe("rgb(0, 0, 0)");
   expect(loginMetrics.overflow).toBe(false);
 
   await page.screenshot({
@@ -91,7 +92,6 @@ test("Handmark night-mode membership flow", async ({ page, request }) => {
       storyLineWidth: Math.round(storyParagraph.width),
       formWidth: Math.round(formRect.width),
       conversionTop: Math.round(conversionRect.top),
-      primaryLinks: Array.from(document.querySelectorAll("a.button-primary")).map((link) => link.textContent.trim()),
       heroStyles: styles(heroSection),
       sectionStyles: styles(firstSection),
       conversionStyles: styles(conversionStrip),
@@ -105,37 +105,44 @@ test("Handmark night-mode membership flow", async ({ page, request }) => {
   expect(seo.offerName).toBe("Handmark Human Review");
   expect(seo.offerPrice).toBe("99");
   expect(seo.overflow).toBe(false);
+  // Content column caps at the framework page measure (--measure-xl).
   expect(seo.heroWidth).toBeLessThanOrEqual(1180);
   expect(seo.storyWidth).toBeLessThanOrEqual(1180);
-  expect(seo.membershipWidth).toBeLessThanOrEqual(580);
-  expect(seo.storyLineWidth).toBeLessThanOrEqual(760);
-  expect(seo.formWidth).toBeLessThanOrEqual(740);
+  expect(seo.membershipWidth).toBeLessThanOrEqual(1180);
+  expect(seo.storyLineWidth).toBeLessThanOrEqual(1180);
+  // Application form caps at the framework --measure-md (640px).
+  expect(seo.formWidth).toBeLessThanOrEqual(640);
   expect(seo.conversionTop).toBeLessThan(1080);
-  expect(seo.primaryLinks).toEqual(["Start human review"]);
-  expect(seo.heroStyles.paddingTop).toBe("112px");
-  expect(seo.heroStyles.paddingBottom).toBe("112px");
-  expect(seo.sectionStyles.paddingTop).toBe("112px");
-  expect(seo.sectionStyles.paddingBottom).toBe("112px");
-  expect(seo.conversionStyles.paddingTop).toBe("80px");
-  expect(seo.conversionStyles.paddingBottom).toBe("80px");
-  expect(seo.pricingStyles.paddingLeft).toBe("40px");
-  expect(seo.formStyles.paddingLeft).toBe("40px");
+  // Primary hero call to action is the framework cx-button.
+  await expect(page.getByRole("button", { name: "Start human review" })).toBeVisible();
+  // Section rhythm uses the framework spacing scale (--space-2xl = 64px).
+  expect(seo.heroStyles.paddingTop).toBe("64px");
+  expect(seo.heroStyles.paddingBottom).toBe("64px");
+  expect(seo.sectionStyles.paddingTop).toBe("64px");
+  expect(seo.sectionStyles.paddingBottom).toBe("64px");
+  expect(seo.conversionStyles.paddingTop).toBe("64px");
+  expect(seo.conversionStyles.paddingBottom).toBe("64px");
+  // Card padding uses the framework --space-xl (32px).
+  expect(seo.pricingStyles.paddingLeft).toBe("32px");
+  expect(seo.formStyles.paddingLeft).toBe("32px");
 
   await page.screenshot({
     path: "/private/tmp/handmark-desktop.png",
     fullPage: true
   });
 
+  // Text fields forward their name to the native input; textareas and the
+  // checkbox are framework primitives addressed by their accessible label.
   await page.locator('input[name="name"]').fill("Playwright Maker");
   await page.locator('input[name="email"]').fill("maker@example.com");
   await page.locator('input[name="contactPreference"]').fill("Email first, then video call");
   await page.locator('input[name="brand"]').fill("Playwright Maker Studio");
   await page.locator('input[name="category"]').fill("Furniture");
   await page.locator('input[name="website"]').fill("https://example.com");
-  await page.locator('textarea[name="craftSummary"]').fill("A human-authored craft process verified through Playwright.");
-  await page.locator('textarea[name="proofLinks"]').fill("https://example.com/proof");
+  await page.getByLabel("What do you make?").fill("A human-authored craft process verified through Playwright.");
+  await page.getByLabel("Proof links").fill("https://example.com/proof");
   await page.locator('input[name="walkthroughPreference"]').fill("Video call");
-  await page.locator('input[name="agree"]').check();
+  await page.getByRole("checkbox", { name: /I confirm this application/ }).check();
   await page.getByRole("button", { name: "Apply for review" }).click();
   await expect(page.locator("#form-status")).toContainText("Application HM-");
   const savedApplications = await fs.readFile(

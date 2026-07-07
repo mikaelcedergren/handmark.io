@@ -3,11 +3,15 @@
         <img src="/assets/handmark-logo.svg?v=20260603-2" alt="">
         <span>handmark</span>
       </a>
-      <button class="menu-toggle" type="button" (click)="toggleMenu()" [attr.aria-label]="navOpen ? 'Close menu' : 'Open menu'" aria-controls="primary-menu" [attr.aria-expanded]="navOpen">
-        <span></span>
-        <span></span>
-        <span></span>
-      </button>
+      <div class="menu-toggle">
+        <cx-icon-button
+          [icon]="navOpen ? 'remove' : 'menu-horizontal'"
+          variant="default"
+          [ariaLabel]="navOpen ? 'Close menu' : 'Open menu'"
+          [ariaPressed]="navOpen"
+          (pressed)="toggleMenu()"
+        />
+      </div>
       <div class="nav-panel" id="primary-menu">
         <nav aria-label="Primary">
           <a href="#why" (click)="closeMenu()">Why</a>
@@ -17,7 +21,7 @@
         </nav>
         <div class="nav-actions">
           <form method="post" action="/logout">
-            <button class="button button-quiet" type="submit">Log out</button>
+            <cx-button type="submit" [transparent]="true" text="Log out" />
           </form>
         </div>
       </div>
@@ -28,13 +32,13 @@
         <div class="hero-grid">
           <div class="hero-copy">
             <p class="eyebrow">Human authorship, publicly verified</p>
-            <h1>Handmark</h1>
-            <p class="hero-lede">A public trust mark for work made by a person.</p>
-            <p class="hero-body">
+            <h1 class="cx-text-title-1 cx-font-bold">Handmark</h1>
+            <p class="hero-lede cx-text-title-2 cx-text-ink">A public trust mark for work made by a person.</p>
+            <p class="hero-body cx-text-body-lg cx-text-muted">
               For buyers, human work should not be a mood, a label, or a vague claim. Handmark gives makers a public way to show that care, judgment, and responsibility are still part of the work.
             </p>
             <div class="hero-actions">
-              <a class="button button-primary" href="#apply">Start human review</a>
+              <cx-button mood="primary" size="large" text="Start human review" (pressed)="scrollTo('apply')" />
             </div>
             <div class="hero-facts" aria-label="Membership summary">
               <span>$99 review starts the process</span>
@@ -44,7 +48,7 @@
           </div>
 
           <aside class="proof-showcase" aria-label="Verified member proof page preview">
-            <div class="proof-page panel">
+            <div class="proof-page panel theme-light">
               <div class="proof-page-top">
                 <img src="/assets/handmark-symbol.svg?v=20260603-2" alt="">
                 <span>Public proof page</span>
@@ -52,8 +56,8 @@
               <div class="proof-page-hero">
                 <div>
                   <p class="proof-state">Verified human-made work</p>
-                  <h2>Mara Holt Studio</h2>
-                  <p>Independent furniture, shaped by hand tools, sketches, and material judgment.</p>
+                  <h2 class="cx-text-title-1">Mara Holt Studio</h2>
+                  <p class="cx-text-muted">Independent furniture, shaped by hand tools, sketches, and material judgment.</p>
                 </div>
                 <img class="proof-stamp" src="/assets/handmark-stamp.svg?v=20260603-2" alt="Handmark made by human hands stamp">
               </div>
@@ -79,7 +83,7 @@
             <div class="review-note panel">
               <span>Review outcome</span>
               <strong>Approved after process walkthrough</strong>
-              <p>Identity, evidence, and the human role are checked before the mark is issued.</p>
+              <p class="cx-text-muted">Identity, evidence, and the human role are checked before the mark is issued.</p>
             </div>
           </aside>
         </div>
@@ -89,9 +93,9 @@
         <div class="conversion-inner">
           <div>
             <p class="eyebrow">Paid review, not pay-to-display</p>
-            <h2>The $99 fee starts the review. Approval is earned.</h2>
+            <h2 class="cx-text-title-1">The $99 fee starts the review. Approval is earned.</h2>
           </div>
-          <p>Submitted proof is only the beginning. We contact the applicant, ask them to walk through the process, and issue nothing unless the claim is satisfactory. If not approved, no subscription starts.</p>
+          <p class="cx-text-body-lg cx-text-muted">Submitted proof is only the beginning. We contact the applicant, ask them to walk through the process, and issue nothing unless the claim is satisfactory. If not approved, no subscription starts.</p>
         </div>
       </section>
 
@@ -99,13 +103,13 @@
         <div class="section-grid">
           <div class="section-kicker">
             <p class="eyebrow">Why Handmark exists</p>
-            <h2>The human part is becoming harder to see.</h2>
+            <h2 class="cx-text-title-1">The human part is becoming harder to see.</h2>
           </div>
           <div class="story-copy">
-            <p>
+            <p class="cx-text-body-lg cx-text-muted">
               People value the effort behind a thing. A ring, an article, a chair, or a painting carries more meaning when another human being has spent attention on it and stood behind the result.
             </p>
-            <p>
+            <p class="cx-text-body-lg cx-text-muted">
               Handmark exists for the work where that answer matters. It gives honest makers a way to make the human role visible without asking buyers to simply take their word for it.
             </p>
           </div>
@@ -115,12 +119,12 @@
       <section id="proof" class="section proof-section">
         <div class="section-heading">
           <p class="eyebrow">What buyers see</p>
-          <h2>More than a badge on a page.</h2>
-          <p>Handmark turns a claim into a visible proof record: who made the work, what was reviewed, how approval was reached, and whether the membership is still active.</p>
+          <h2 class="cx-text-title-1">More than a badge on a page.</h2>
+          <p class="cx-text-body-lg cx-text-muted">Handmark turns a claim into a visible proof record: who made the work, what was reviewed, how approval was reached, and whether the membership is still active.</p>
         </div>
         <div class="buyer-grid">
           <article class="buyer-card panel product-card">
-            <div class="product-media">
+            <div class="product-media theme-light">
               <div class="work-preview" aria-hidden="true">
                 <div class="work-preview-top">
                   <span></span>
@@ -141,7 +145,7 @@
             <div class="product-copy">
               <p class="proof-state">Public badge</p>
               <h3>Walnut writing desk</h3>
-              <p>Designed, joined, finished, and signed by Mara Holt Studio, with the human process linked directly from the badge.</p>
+              <p class="cx-text-muted">Designed, joined, finished, and signed by Mara Holt Studio, with the human process linked directly from the badge.</p>
               <div class="verified-row">
                 <img src="/assets/handmark-seal.svg?v=20260603-2" alt="">
                 <span>Human-made work verified by Handmark</span>
@@ -152,7 +156,7 @@
           <article class="buyer-card panel proof-card">
             <p class="proof-state">handmark.io/verify/mara-holt</p>
             <h3>Verified member record</h3>
-            <p>Each approved member receives a proof page that explains the review in plain language.</p>
+            <p class="cx-text-muted">Each approved member receives a proof page that explains the review in plain language.</p>
             <ul class="record-list">
               <li><span>Identity</span><strong>Mara Holt Studio</strong></li>
               <li><span>Category</span><strong>Furniture</strong></li>
@@ -167,8 +171,8 @@
         <div class="standard-grid">
           <div class="section-kicker">
             <p class="eyebrow">The standard</p>
-            <h2>Selective by design.</h2>
-            <p class="supporting-copy">
+            <h2 class="cx-text-title-1">Selective by design.</h2>
+            <p class="supporting-copy cx-text-body-lg cx-text-muted">
               Tools can support the work. Handmark is about whether a person is still the author: making the judgment calls, carrying responsibility, and being able to explain the process.
             </p>
           </div>
@@ -176,17 +180,17 @@
             <article>
               <span>01</span>
               <h3>Walkthrough required</h3>
-              <p>Submitted proof is the starting point. We contact the applicant and ask them to walk us through the process, digitally or in person.</p>
+              <p class="cx-text-muted">Submitted proof is the starting point. We contact the applicant and ask them to walk us through the process, digitally or in person.</p>
             </article>
             <article>
               <span>02</span>
               <h3>Evidence required</h3>
-              <p>Applicants support the claim through process material, references, studio context, work-in-progress records, direct contact, or inspection.</p>
+              <p class="cx-text-muted">Applicants support the claim through process material, references, studio context, work-in-progress records, direct contact, or inspection.</p>
             </article>
             <article>
               <span>03</span>
               <h3>No proof, no stamp</h3>
-              <p>The mark is only issued when the claim is satisfactory. The stamp is not a decoration, and it is not granted on trust alone.</p>
+              <p class="cx-text-muted">The mark is only issued when the claim is satisfactory. The stamp is not a decoration, and it is not granted on trust alone.</p>
             </article>
           </div>
         </div>
@@ -196,8 +200,8 @@
         <div class="membership-layout">
           <div class="membership-copy">
             <p class="eyebrow">Membership</p>
-            <h2>One subscription. One standard.</h2>
-            <p>There are no tiers and no lightweight version of approval. The review starts at $99 and covers the human review plus walkthrough. If approved, membership continues at $79 per month. If not approved, no subscription starts.</p>
+            <h2 class="cx-text-title-1">One subscription. One standard.</h2>
+            <p class="cx-text-body-lg cx-text-muted">There are no tiers and no lightweight version of approval. The review starts at $99 and covers the human review plus walkthrough. If approved, membership continues at $79 per month. If not approved, no subscription starts.</p>
           </div>
           <article class="pricing-card panel membership-card">
             <div class="plan-top">
@@ -220,14 +224,13 @@
         <div class="application-layout">
           <div class="section-kicker">
             <p class="eyebrow">Apply</p>
-            <h2>Tell us what you make.</h2>
-            <p class="supporting-copy">
+            <h2 class="cx-text-title-1">Tell us what you make.</h2>
+            <p class="supporting-copy cx-text-body-lg cx-text-muted">
               Keep it plain. Share who you are, where the work lives, and what evidence can prove the human-made claim. The next step is direct contact, not automatic approval.
             </p>
           </div>
 
-          <form class="application-form panel" id="application-form" (submit)="submitApplication($event)" (reset)="resetApplication($event)">
-            <input type="hidden" name="plan" value="verification">
+          <form class="application-form panel" id="application-form" (submit)="$event.preventDefault(); submitApplication()">
             <div class="membership-summary" aria-label="Selected review path">
               <span>Application path</span>
               <strong>$99 human review</strong>
@@ -243,20 +246,33 @@
                 </div>
               </div>
               <div class="form-grid">
-                <label>
-                  Name or studio
-                  <input name="name" type="text" autocomplete="name" required>
-                </label>
-                <label>
-                  Email
-                  <input name="email" type="email" autocomplete="email" required>
-                </label>
+                <cx-text-field
+                  label="Name or studio"
+                  name="name"
+                  autocomplete="name"
+                  [value]="model.name"
+                  [validation]="errors.name"
+                  (valueChange)="setField('name', $event)"
+                />
+                <cx-text-field
+                  label="Email"
+                  name="email"
+                  autocomplete="email"
+                  [value]="model.email"
+                  [validation]="errors.email"
+                  (valueChange)="setField('email', $event)"
+                />
               </div>
 
-              <label>
-                Best way to contact you
-                <input name="contactPreference" type="text" autocomplete="tel" required placeholder="Phone, email, handle, or preferred contact method">
-              </label>
+              <cx-text-field
+                label="Best way to contact you"
+                name="contactPreference"
+                autocomplete="tel"
+                hint="Phone, email, handle, or preferred contact method."
+                [value]="model.contactPreference"
+                [validation]="errors.contactPreference"
+                (valueChange)="setField('contactPreference', $event)"
+              />
             </div>
 
             <div class="form-section">
@@ -268,27 +284,48 @@
                 </div>
               </div>
               <div class="form-grid">
-                <label>
-                  Brand or work name
-                  <input name="brand" type="text" required placeholder="The name buyers know">
-                </label>
-                <label>
-                  Kind of work
-                  <input name="category" type="text" required placeholder="Furniture, jewelry, writing, art...">
-                </label>
+                <cx-text-field
+                  label="Brand or work name"
+                  name="brand"
+                  hint="The name buyers know."
+                  [value]="model.brand"
+                  [validation]="errors.brand"
+                  (valueChange)="setField('brand', $event)"
+                />
+                <cx-text-field
+                  label="Kind of work"
+                  name="category"
+                  hint="Furniture, jewelry, writing, art..."
+                  [value]="model.category"
+                  [validation]="errors.category"
+                  (valueChange)="setField('category', $event)"
+                />
               </div>
-              <label>
-                Website or public profile
-                <input name="website" type="url" placeholder="https://example.com" required>
-              </label>
-              <label>
-                What do you make?
-                <textarea name="craftSummary" rows="6" required placeholder="Describe the work, the process, and where human authorship sits."></textarea>
-              </label>
-              <label>
-                Proof links
-                <textarea name="proofLinks" rows="4" required placeholder="Portfolio, process notes, studio page, references, or work-in-progress material."></textarea>
-              </label>
+              <cx-text-field
+                label="Website or public profile"
+                name="website"
+                autocomplete="url"
+                hint="For example, https://example.com"
+                [value]="model.website"
+                [validation]="errors.website"
+                (valueChange)="setField('website', $event)"
+              />
+              <cx-textarea
+                label="What do you make?"
+                [rows]="6"
+                hint="Describe the work, the process, and where human authorship sits."
+                [value]="model.craftSummary"
+                [validation]="errors.craftSummary"
+                (valueChange)="setField('craftSummary', $event)"
+              />
+              <cx-textarea
+                label="Proof links"
+                [rows]="4"
+                hint="Portfolio, process notes, studio page, references, or work-in-progress material."
+                [value]="model.proofLinks"
+                [validation]="errors.proofLinks"
+                (valueChange)="setField('proofLinks', $event)"
+              />
             </div>
 
             <div class="form-section">
@@ -299,17 +336,24 @@
                   <p>Handmark will contact you before approval. The stamp is never issued from a form alone.</p>
                 </div>
               </div>
-              <label>
-                Walkthrough preference
-                <input name="walkthroughPreference" type="text" placeholder="Video call, studio visit, voice call, or another practical format">
-              </label>
+              <cx-text-field
+                label="Walkthrough preference"
+                name="walkthroughPreference"
+                [optional]="true"
+                hint="Video call, studio visit, voice call, or another practical format."
+                [value]="model.walkthroughPreference"
+                (valueChange)="setField('walkthroughPreference', $event)"
+              />
             </div>
 
-            <label class="agree-row">
-              <input name="agree" type="checkbox" required>
-              <span>I confirm this application is accurate and understand the $99 fee starts review, not approval. Handmark will contact me for a process walkthrough before any stamp is issued.</span>
-            </label>
-            <button class="button button-primary form-submit" type="submit">Apply for review</button>
+            <cx-checkbox
+              class="agree-row"
+              text="I confirm this application is accurate and understand the $99 fee starts review, not approval. Handmark will contact me for a process walkthrough before any stamp is issued."
+              [hint]="agreeError || undefined"
+              [selected]="model.agree"
+              (selectedChange)="setAgree($event)"
+            />
+            <cx-button mood="primary" size="large" type="submit" text="Apply for review" />
             <output class="form-status" id="form-status" aria-live="polite" [attr.data-state]="formState || null">{{ formStatus }}</output>
           </form>
         </div>

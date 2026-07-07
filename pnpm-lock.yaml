@@ -29,12 +29,9 @@ importers:
       '@angular/ssr':
         specifier: ^22.0.3
         version: 22.0.4(053ae0860c2f4c52d7c7f67d309aabd9)
-      '@fontsource-variable/inter':
-        specifier: ^5.2.8
-        version: 5.2.8
       '@mikaelcedergren/cx-framework':
         specifier: github:mikaelcedergren/cx-framework#main
-        version: https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/0b8d0d214d3d59bce220e2d9f0374d19a88e83c5(bba6925c379f32136b2f5a211b5dff28)
+        version: https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/ed84b26d45419388efc9bb11f7aaafe0ac287817(bba6925c379f32136b2f5a211b5dff28)
       compression:
         specifier: ^1.7.5
         version: 1.8.1
@@ -1173,9 +1170,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@fontsource-variable/inter@5.2.8':
-    resolution: {integrity: sha512-kOfP2D+ykbcX/P3IFnokOhVRNoTozo5/JxhAIVYLpea/UBmCQ/YWPBfWIDuBImXX/15KH+eKh4xpEUyS2sQQGQ==}
-
   '@gar/promise-retry@1.0.3':
     resolution: {integrity: sha512-GmzA9ckNokPypTg10pgpeHNQe7ph+iIKKmhKu3Ob9ANkswreCx7R3cKmY781K8QK3AqVL3xVh9A42JvIAbkkSA==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -1524,9 +1518,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@mikaelcedergren/cx-framework@https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/0b8d0d214d3d59bce220e2d9f0374d19a88e83c5':
-    resolution: {tarball: https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/0b8d0d214d3d59bce220e2d9f0374d19a88e83c5}
-    version: 0.3.4
+  '@mikaelcedergren/cx-framework@https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/ed84b26d45419388efc9bb11f7aaafe0ac287817':
+    resolution: {tarball: https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/ed84b26d45419388efc9bb11f7aaafe0ac287817}
+    version: 0.3.5
     peerDependencies:
       '@angular/cdk': ^22.0.0
       '@angular/common': ^22.0.0
@@ -5692,8 +5686,6 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@fontsource-variable/inter@5.2.8': {}
-
   '@gar/promise-retry@1.0.3': {}
 
   '@harperfast/extended-iterable@1.0.3':
@@ -6017,7 +6009,7 @@ snapshots:
   '@lmdb/lmdb-win32-x64@3.5.4':
     optional: true
 
-  '@mikaelcedergren/cx-framework@https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/0b8d0d214d3d59bce220e2d9f0374d19a88e83c5(bba6925c379f32136b2f5a211b5dff28)':
+  '@mikaelcedergren/cx-framework@https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/ed84b26d45419388efc9bb11f7aaafe0ac287817(bba6925c379f32136b2f5a211b5dff28)':
     dependencies:
       '@angular/cdk': 22.0.2(@angular/common@22.0.4(@angular/core@22.0.4(@angular/compiler@22.0.4)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.0.4(@angular/compiler@22.0.4)(rxjs@7.8.2)(zone.js@0.16.2))(@angular/platform-browser@22.0.4(@angular/common@22.0.4(@angular/core@22.0.4(@angular/compiler@22.0.4)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.0.4(@angular/compiler@22.0.4)(rxjs@7.8.2)(zone.js@0.16.2)))(rxjs@7.8.2)
       '@angular/common': 22.0.4(@angular/core@22.0.4(@angular/compiler@22.0.4)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2)

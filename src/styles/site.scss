@@ -1,0 +1,16 @@
+// Handmark global stylesheet — the single compiled artifact shared by the
+// Angular sales page and the static login page. Emitted as /styles.css
+// (angular.json styles, inject:false) and linked from both index.html and
+// login.html so the two surfaces are guaranteed to share one visual system.
+//
+// It is framework-first: tokens, base reset, self-hosted fonts, and utilities
+// come straight from @mikaelcedergren/cx-framework. The only local layer is
+// page composition (_page.scss), which arranges framework tokens and utilities
+// into Handmark's page structure. It defines no design values of its own.
+
+@use '@mikaelcedergren/cx-framework/tokens';
+@use '@mikaelcedergren/cx-framework/styles/fonts';
+@use '@mikaelcedergren/cx-framework/styles/base';
+@use '@mikaelcedergren/cx-framework/styles/utilities';
+
+@use 'page';

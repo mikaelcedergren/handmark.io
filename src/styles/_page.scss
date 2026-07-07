@@ -1,0 +1,996 @@
+// Handmark page composition.
+//
+// Structure only: this file arranges the framework's tokens and utilities into
+// Handmark's page, proof preview, application form, footer, and login screen.
+// Every value here is a framework token reference — no local colours, spacing
+// values, type sizes, radii, shadows, or breakpoints are invented. Interactive
+// controls are framework primitives (cx-button, cx-text-field, cx-textarea,
+// cx-checkbox, cx-card), so this file carries no button or input skin.
+
+@use '@mikaelcedergren/cx-framework/tokens/breakpoints-scale' as bp;
+
+$mobile-max: bp.$mobile - 1px;
+
+// ---------------------------------------------------------------------------
+// Semantic element defaults
+//
+// The framework base reset styles the body, links, and focus ring but leaves
+// heading/paragraph type to the app. These map the document outline onto the
+// framework type scale so bare h1/h2/h3/p read correctly; templates promote or
+// mute individual blocks with cx-text-* / cx-font-* utilities.
+// ---------------------------------------------------------------------------
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1,
+h2 {
+  margin-bottom: var(--space-sm);
+  color: var(--ink);
+  font-size: var(--font-size-title-1);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-heading);
+}
+
+h3 {
+  margin-bottom: var(--space-xs);
+  color: var(--ink);
+  font-size: var(--font-size-title-2);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-heading);
+}
+
+p {
+  margin-bottom: var(--space-md);
+}
+
+// Full-bleed sections align their inner content to the centred page column by
+// padding with the gutter-centered token; the inner wrapper caps at the page
+// measure. Section vertical rhythm uses the largest spacing step.
+%bleed {
+  padding-inline: var(--gutter-centered);
+}
+
+%column {
+  width: 100%;
+  max-width: var(--measure-xl);
+  margin-inline: auto;
+}
+
+// ---------------------------------------------------------------------------
+// Header
+// ---------------------------------------------------------------------------
+
+.site-header {
+  @extend %bleed;
+
+  position: sticky;
+  top: 0;
+  z-index: var(--z-index-sticky);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  min-height: var(--controller-size-large);
+  gap: var(--space-lg);
+  padding-block: var(--space-sm);
+  border-bottom: var(--line-discreet);
+  background: color-mix(in srgb, var(--surface-mid) 88%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.brand,
+.login-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: max-content;
+  color: var(--ink);
+  font-weight: var(--font-weight-bold);
+  text-decoration: none;
+}
+
+.brand img,
+.login-mark {
+  width: var(--icon-size-xl);
+  height: var(--icon-size-xl);
+}
+
+.brand span {
+  font-size: var(--font-size-title-3);
+}
+
+.nav-panel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-lg);
+}
+
+.site-header nav,
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.site-header nav {
+  color: var(--opacity-high);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.site-header nav a {
+  text-decoration: none;
+}
+
+.site-header nav a:hover {
+  color: var(--ink);
+}
+
+.menu-toggle {
+  display: none;
+}
+
+// ---------------------------------------------------------------------------
+// Section scaffolding
+// ---------------------------------------------------------------------------
+
+.hero,
+.section,
+.conversion-strip {
+  @extend %bleed;
+}
+
+.hero {
+  padding-block: var(--space-2xl);
+  border-bottom: var(--line-discreet);
+}
+
+.section {
+  padding-block: var(--space-2xl);
+  border-bottom: var(--line-discreet);
+}
+
+.narrative-section,
+.membership-section {
+  background: var(--surface-low);
+}
+
+.hero-grid,
+.conversion-inner,
+.section-grid,
+.section-heading,
+.buyer-grid,
+.standard-grid,
+.membership-layout,
+.application-layout,
+.site-footer {
+  @extend %column;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr);
+  gap: var(--space-2xl);
+  align-items: center;
+}
+
+.hero-copy {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: var(--font-size-body-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.hero-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.hero-facts span {
+  position: relative;
+  padding-left: var(--space-md);
+  color: var(--opacity-high);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.hero-facts span::before {
+  position: absolute;
+  top: 0.6em;
+  left: 0;
+  width: var(--space-xs);
+  height: var(--space-xs);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  content: '';
+}
+
+// ---------------------------------------------------------------------------
+// Proof preview (dark panels + light "paper" proof page)
+// ---------------------------------------------------------------------------
+
+.proof-showcase {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.panel {
+  border: var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-high);
+  box-shadow: var(--shadow-dialog);
+}
+
+.proof-page {
+  padding: var(--space-xl);
+  border-radius: var(--radius-md);
+}
+
+.proof-page-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+  color: var(--opacity-high);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.proof-page-top img {
+  width: var(--icon-size-xl);
+  height: var(--icon-size-xl);
+}
+
+.proof-page-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-lg);
+  align-items: center;
+  padding-bottom: var(--space-lg);
+  border-bottom: var(--line);
+}
+
+.proof-state {
+  color: var(--accent);
+  font-size: var(--font-size-body-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+}
+
+.proof-stamp {
+  width: var(--space-2xl);
+  height: var(--space-2xl);
+}
+
+.proof-fields {
+  display: grid;
+  gap: var(--border-width);
+  overflow: hidden;
+  margin: var(--space-lg) 0 0;
+  border: var(--line);
+  border-radius: var(--radius-md);
+  background: var(--opacity-mid);
+}
+
+.proof-fields div {
+  display: grid;
+  grid-template-columns: minmax(0, 0.4fr) minmax(0, 1fr);
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--surface-high);
+}
+
+.proof-fields dt,
+.proof-fields dd {
+  margin: 0;
+}
+
+.proof-fields dt {
+  color: var(--opacity-high);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.proof-fields dd {
+  color: var(--ink);
+  font-weight: var(--font-weight-bold);
+}
+
+.badge-preview {
+  display: grid;
+  gap: var(--space-2xs);
+  width: max-content;
+  min-width: var(--measure-sm);
+  max-width: 100%;
+  margin-left: auto;
+  padding: var(--space-md);
+  border: var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-mid);
+  box-shadow: var(--shadow-dialog);
+}
+
+.badge-preview span {
+  color: var(--opacity-high);
+  font-size: var(--font-size-body-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+}
+
+.badge-preview strong {
+  color: var(--ink);
+}
+
+.review-note {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border-color: var(--accent);
+  background: var(--accent-opacity);
+}
+
+.review-note span {
+  color: var(--accent);
+  font-size: var(--font-size-body-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+}
+
+.review-note strong {
+  color: var(--ink);
+}
+
+// ---------------------------------------------------------------------------
+// Conversion strip
+// ---------------------------------------------------------------------------
+
+.conversion-strip {
+  padding-block: var(--space-2xl);
+  border-bottom: var(--line-discreet);
+  background: var(--surface-low);
+}
+
+.conversion-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: var(--space-xl);
+  align-items: center;
+}
+
+// ---------------------------------------------------------------------------
+// Content grids
+// ---------------------------------------------------------------------------
+
+.section-grid,
+.standard-grid,
+.membership-layout,
+.application-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: var(--space-2xl);
+  align-items: start;
+}
+
+.section-kicker,
+.membership-copy {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.story-copy {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.section-heading {
+  display: grid;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xl);
+}
+
+.buyer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr);
+  gap: var(--space-lg);
+  align-items: stretch;
+}
+
+.product-card {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr);
+  gap: var(--space-lg);
+  align-items: stretch;
+}
+
+.product-media {
+  display: grid;
+  align-content: space-between;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  border-radius: var(--radius-md);
+}
+
+.product-media span {
+  color: var(--opacity-high);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+// Abstract work thumbnail — structural placeholder built from ink tokens.
+.work-preview {
+  display: grid;
+  gap: var(--space-sm);
+  width: 100%;
+  max-width: var(--measure-sm);
+  margin-inline: auto;
+  padding: var(--space-md);
+  border: var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--opacity-low);
+}
+
+.work-preview-top,
+.work-preview-lines {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.work-preview-top span,
+.work-preview-lines span {
+  display: block;
+  height: var(--space-xs);
+  border-radius: var(--radius-pill);
+  background: var(--opacity-mid);
+}
+
+.work-preview-top span:first-child {
+  width: 60%;
+}
+
+.work-preview-top span:last-child {
+  width: 40%;
+}
+
+.work-preview-image {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-xs);
+  height: var(--space-2xl);
+}
+
+.work-preview-image span {
+  display: block;
+  border: var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--opacity-low);
+}
+
+.work-preview-image span:nth-child(1) {
+  grid-row: span 2;
+}
+
+.work-preview-image span:nth-child(2) {
+  grid-column: span 2;
+}
+
+.work-preview-lines span:first-child {
+  width: 100%;
+}
+
+.work-preview-lines span:last-child {
+  width: 70%;
+}
+
+.product-copy {
+  display: grid;
+  align-content: center;
+  gap: var(--space-sm);
+}
+
+.verified-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+  border: var(--line-discreet);
+  border-radius: var(--radius-md);
+  background: var(--surface-mid);
+  color: var(--ink);
+  font-weight: var(--font-weight-bold);
+}
+
+.verified-row img {
+  width: var(--controller-size-large);
+  height: var(--controller-size-large);
+  border-radius: var(--radius-pill);
+}
+
+.proof-card {
+  display: grid;
+  align-content: center;
+  gap: var(--space-sm);
+}
+
+.record-list,
+.membership-includes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-list {
+  display: grid;
+  gap: var(--border-width);
+  overflow: hidden;
+  margin-top: var(--space-md);
+  border: var(--line-discreet);
+  border-radius: var(--radius-md);
+  background: var(--opacity-low);
+}
+
+.record-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--surface-mid);
+}
+
+.record-list span {
+  color: var(--opacity-high);
+}
+
+.record-list strong {
+  color: var(--ink);
+}
+
+// ---------------------------------------------------------------------------
+// Standard list
+// ---------------------------------------------------------------------------
+
+.standard-list {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.standard-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--space-md);
+  padding: var(--space-xl);
+  border: var(--line-discreet);
+  border-radius: var(--radius-md);
+  background: var(--surface-high);
+}
+
+.standard-list span {
+  color: var(--accent);
+  font-size: var(--font-size-body-xs);
+  font-weight: var(--font-weight-bold);
+}
+
+.standard-list h3,
+.standard-list p {
+  grid-column: 2;
+  margin: 0;
+}
+
+.standard-list h3 {
+  margin-bottom: var(--space-2xs);
+}
+
+// ---------------------------------------------------------------------------
+// Membership card
+// ---------------------------------------------------------------------------
+
+.pricing-card {
+  display: grid;
+  gap: var(--space-lg);
+  padding: var(--space-xl);
+  border-color: var(--accent);
+}
+
+.plan-flag {
+  display: inline-flex;
+  width: max-content;
+  padding: var(--space-2xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  background: var(--accent-opacity);
+  color: var(--accent);
+  font-size: var(--font-size-body-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+}
+
+.plan-top {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.price {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--font-size-title-1);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-heading);
+}
+
+.price span {
+  color: var(--opacity-high);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+}
+
+.subscription-note {
+  margin: 0;
+  color: var(--opacity-high);
+  font-weight: var(--font-weight-bold);
+}
+
+.membership-includes {
+  display: grid;
+  gap: var(--border-width);
+  overflow: hidden;
+  border: var(--line-discreet);
+  border-radius: var(--radius-md);
+  background: var(--opacity-low);
+}
+
+.membership-includes li {
+  padding: var(--space-md);
+  background: var(--surface-mid);
+  color: var(--opacity-high);
+  font-weight: var(--font-weight-medium);
+}
+
+// ---------------------------------------------------------------------------
+// Application form
+// ---------------------------------------------------------------------------
+
+.application-form {
+  display: grid;
+  gap: var(--space-xl);
+  width: 100%;
+  max-width: var(--measure-md);
+  padding: var(--space-xl);
+}
+
+.membership-summary {
+  display: grid;
+  gap: var(--space-2xs);
+  padding: var(--space-lg);
+  border: var(--line);
+  border-color: var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-opacity);
+}
+
+.membership-summary span {
+  color: var(--accent);
+  font-size: var(--font-size-body-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+}
+
+.membership-summary strong {
+  color: var(--ink);
+  font-size: var(--font-size-title-2);
+}
+
+.membership-summary small {
+  color: var(--opacity-high);
+  font-size: var(--font-size-body-sm);
+}
+
+.form-section {
+  display: grid;
+  gap: var(--space-md);
+  padding-bottom: var(--space-xl);
+  border-bottom: var(--line-discreet);
+}
+
+.form-section-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-md);
+  align-items: start;
+}
+
+.form-section-head span {
+  color: var(--accent);
+  font-size: var(--font-size-body-xs);
+  font-weight: var(--font-weight-bold);
+}
+
+.form-section-head h3 {
+  margin-bottom: var(--space-2xs);
+}
+
+.form-section-head p {
+  margin: 0;
+  color: var(--opacity-high);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.agree-row {
+  display: flex;
+}
+
+.form-status {
+  display: block;
+  min-height: var(--space-lg);
+  color: var(--opacity-high);
+  font-weight: var(--font-weight-medium);
+}
+
+.form-status[data-state='success'] {
+  color: var(--success);
+}
+
+.form-status[data-state='error'] {
+  color: var(--danger);
+}
+
+// ---------------------------------------------------------------------------
+// Footer
+// ---------------------------------------------------------------------------
+
+.site-footer {
+  @extend %bleed;
+
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  max-width: none;
+  padding-block: var(--space-xl);
+  color: var(--opacity-mid);
+  font-size: var(--font-size-body-sm);
+}
+
+// ---------------------------------------------------------------------------
+// "Paper" proof surfaces
+//
+// The proof page and member-work media carry the framework theme-light class to
+// mark them as the light "paper" region against the night page. The framework
+// currently rebinds theme tokens only at :root (:root.theme-light), so a nested
+// theme-light does not yet flip the subtree; until the framework gains nested
+// theme scoping these surfaces read on the framework dark surface like the other
+// grounded cards. The class stays so they flip automatically once that lands —
+// no local colours are invented in the meantime. (Tracked: nested theme scoping
+// in cx-framework.)
+// ---------------------------------------------------------------------------
+
+.theme-light {
+  color: var(--ink);
+  background: var(--surface-mid);
+}
+
+// ---------------------------------------------------------------------------
+// Login screen
+// ---------------------------------------------------------------------------
+
+.login-screen {
+  display: grid;
+  place-items: center;
+  min-height: 100svh;
+  padding: var(--space-lg);
+  background: var(--surface-mid);
+}
+
+.login-shell {
+  display: grid;
+  gap: var(--space-md);
+  width: 100%;
+  max-width: var(--measure-sm);
+}
+
+.login-panel {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-xl);
+  border: var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-high);
+  box-shadow: var(--shadow-dialog);
+}
+
+.login-brand {
+  margin-bottom: var(--space-sm);
+}
+
+.login-form {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+// Login runs on the static gate page, before the Angular app and its
+// primitives exist, so the single password field and submit button cannot be
+// cx-text-field / cx-button. These rules compose the same framework tokens
+// those primitives use — no local design values — to keep the gate visually
+// part of the system.
+.login-label {
+  color: var(--ink);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.login-input {
+  width: 100%;
+  min-height: var(--controller-size-large);
+  padding: 0 var(--space-md);
+  border: var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-mid);
+  color: var(--ink);
+  font-size: var(--font-size-body);
+}
+
+.login-input:focus-visible {
+  border-color: var(--primary);
+  outline: var(--outline-tab);
+  outline-offset: var(--outline-tab-offset);
+}
+
+.login-submit {
+  display: inline-flex;
+  min-height: var(--controller-size-large);
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--space-sm);
+  padding: 0 var(--space-lg);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--on-ink);
+  cursor: pointer;
+  font-size: var(--font-size-body-lg);
+  font-weight: var(--font-weight-medium);
+  transition: background-color var(--motion-fast) ease;
+}
+
+.login-submit:hover {
+  background: var(--primary-alt);
+}
+
+.login-error {
+  display: none;
+  margin: 0;
+  color: var(--danger);
+  font-weight: var(--font-weight-medium);
+}
+
+html[data-login-error] .login-error {
+  display: block;
+}
+
+.login-footnote {
+  margin: 0;
+  color: var(--opacity-mid);
+  font-size: var(--font-size-body-sm);
+  text-align: center;
+}
+
+// ---------------------------------------------------------------------------
+// Responsive — one breakpoint, matching the framework mobile boundary
+// ---------------------------------------------------------------------------
+
+@media (max-width: $mobile-max) {
+  .site-header {
+    grid-template-columns: 1fr auto;
+  }
+
+  .menu-toggle {
+    display: inline-flex;
+    justify-self: end;
+  }
+
+  .nav-panel {
+    position: absolute;
+    top: 100%;
+    right: var(--gutter-page);
+    left: var(--gutter-page);
+    display: none;
+    grid-template-columns: 1fr;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    border: var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface-low);
+    box-shadow: var(--shadow-dialog);
+  }
+
+  body.nav-open .nav-panel {
+    display: grid;
+  }
+
+  .site-header nav,
+  .nav-actions {
+    display: grid;
+    gap: var(--space-sm);
+  }
+
+  .site-header nav {
+    overflow: hidden;
+    border: var(--line-discreet);
+    border-radius: var(--radius-md);
+    background: var(--opacity-low);
+  }
+
+  .site-header nav a {
+    padding: var(--space-sm) var(--space-md);
+    background: var(--surface-mid);
+  }
+
+  .nav-actions form {
+    width: 100%;
+  }
+
+  .hero-grid,
+  .conversion-inner,
+  .section-grid,
+  .standard-grid,
+  .membership-layout,
+  .application-layout,
+  .buyer-grid,
+  .product-card {
+    grid-template-columns: 1fr;
+  }
+
+  .proof-page-hero,
+  .proof-fields div,
+  .standard-list article,
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .standard-list h3,
+  .standard-list p {
+    grid-column: auto;
+  }
+
+  .badge-preview {
+    min-width: 0;
+    margin-left: 0;
+  }
+
+  .form-section-head {
+    grid-template-columns: 1fr;
+    gap: var(--space-xs);
+  }
+
+  .hero-actions,
+  .hero-facts,
+  .site-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

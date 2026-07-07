@@ -27,7 +27,7 @@
             "inlineStyleLanguage": "scss",
             "assets": [
               {
-                "glob": "{robots.txt,sitemap.xml,site.webmanifest,login.html,styles.css}",
+                "glob": "{robots.txt,sitemap.xml,site.webmanifest,login.html}",
                 "input": "public",
                 "output": "/"
               },
@@ -37,7 +37,7 @@
                 "output": "assets"
               }
             ],
-            "styles": ["src/styles/cx-framework.scss", "src/styles.scss"],
+            "styles": [{ "input": "src/styles/site.scss", "bundleName": "styles", "inject": false }],
             "scripts": []
           },
           "configurations": {

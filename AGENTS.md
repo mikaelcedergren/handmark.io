@@ -46,22 +46,17 @@ Keep `HOST=127.0.0.1` unless there is a deliberate reason to expose the Node app
 
 ## Hosting and domain reality
 
-Handmark is live on HTTPS at `handmark.io` via the shared static-IP nginx path. Daemon `com.handmark.server` serves the app locally; nginx is the only public gateway. Do not interrupt existing servers.
-
-The live path is:
-
-```text
-DNS -> 81.170.132.41 -> router TCP 80/443 -> nginx -> 127.0.0.1:3000
-```
-
-Repo-specific routing values are in `DOMAIN_SETUP.md`.
+Handmark is live on HTTPS at `handmark.io` via the shared static-IP nginx path. The path itself
+(static IP, router forwarding, nginx as the only public gateway, the nginx include model) is owned
+by the root docs — see the root `AGENTS.md` ("Static IP state") and `GO-LIVE.md`. What is
+handmark-specific: daemon `com.handmark.server` serves the app locally at `127.0.0.1:3000`, and
+repo routing values are in `DOMAIN_SETUP.md`. Do not interrupt existing servers.
 
 Important constraints:
 
 - Do not destroy, replace, or disrupt `localgate.io`.
 - Do not stop nginx unless the user explicitly asks and understands the impact.
 - If nginx changes are needed, add or edit only the Handmark server block, validate with nginx's config test, then reload. Prefer reload over restart.
-- The active nginx include model on this computer uses `/opt/homebrew/etc/nginx/servers/`.
 - Handmark's nginx target should remain `127.0.0.1:3000`.
 - GitHub stores code; GitHub does not point the domain to this local Node API.
 
@@ -134,7 +129,9 @@ If user-facing UX or copy work needs a stronger rule source, use Cortex's framew
 - `src/app/app.component.html` — protected sales page template.
 - `src/app/app.component.ts` — menu and application submission behavior.
 - `public/login.html` — password gate.
-- `public/styles.css` — full visual system for the page and login screen.
+- `src/styles/site.scss` — global stylesheet entry; pulls in the cx-framework tokens, base, self-hosted fonts, and utilities, then the page composition. Compiled by Angular into a stable `/styles.css` (angular.json `styles`, `inject: false`) that both the app and the static login page link.
+- `src/styles/_page.scss` — Handmark page/login composition; arranges framework tokens and utilities only, defines no local design values.
+- `public/assets/fonts/` — framework woff2 files served from this origin for the framework `@font-face` rules.
 - `public/assets/handmark-logo.svg` — nav/login mark.
 - `public/assets/handmark-symbol.svg` — light-background symbol.
 - `public/assets/handmark-stamp.svg` — circular verification stamp.
