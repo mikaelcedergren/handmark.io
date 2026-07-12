@@ -45,7 +45,6 @@ app.get('/healthz', (_req, res) => {
 });
 
 app.get('/login', (_req, res) => sendBuiltFile(res, 'login.html'));
-app.get('/login.html', (_req, res) => sendBuiltFile(res, 'login.html'));
 app.get('/styles.css', (_req, res) => sendBuiltFile(res, 'styles.css'));
 app.get('/robots.txt', (_req, res) => sendBuiltFile(res, 'robots.txt'));
 app.get('/sitemap.xml', (_req, res) => sendBuiltFile(res, 'sitemap.xml'));

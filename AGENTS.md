@@ -96,32 +96,24 @@ Avoid:
 
 The current logo/stamp assets in `public/assets/` are SVG interpretations of the provided handmark direction. They can be refined, but keep the identity centered on the hand/stamp idea: made by human hands.
 
-## Design-system lessons from neighboring repos
+## Framework integrity
 
-Handmark sits in the **Cortex -> cx-framework -> projects** loop. Cortex authors the reusable
-framework pieces: components, tokens, AI skills, guidelines, and design-system decisions.
-`cx-framework` packages them, and Handmark consumes only `@mikaelcedergren/cx-framework`. Do not
-reference Cortex directly through imports, package deps, scripts, styles, local paths, or copied
-source. If Handmark exposes a reusable UI gap, fix it in Cortex, package/push `cx-framework`, then
-update Handmark from the package.
+Cortex is the source of truth; `cx-framework` is its packaged contract; Handmark is only a consumer.
+The package comes from GitHub `main`; local styles may compose tokens but never redefine framework
+behaviour.
 
-Useful conventions come from:
-
-- `/Users/cortex/Development/cortex/AGENTS.md`
-- `/Users/cortex/Development/cortex/framework/README.md`
-- `/Users/cortex/Development/cortex/docs/DESIGN-SYSTEM.md`
-- `/Users/cortex/Development/cx-framework/README.md`
-
-Apply the relevant principles here:
-
-- Tokens carry intent, not accidental color matches. Use surface, ink, muted, accent, success, danger, etc. because they mean something.
-- Discipline is freeing. Let the system make the boring decisions so attention goes to perception and conversion.
-- Fix the core pattern, not the symptom. If a layout or component shape is wrong in multiple places, improve the shared CSS pattern instead of patching individual sections.
-- Components and sections should behave like sealed pieces. Avoid consumer-side overrides, deep hacks, and local specificity fights.
-- The page is the product spec. If a visual or copy choice does not support the trust-mark concept, it probably does not belong.
-- When a feature reaches for a reusable UI pattern, create a coherent local section/component style rather than bolting ad hoc declarations onto individual elements.
-
-If user-facing UX or copy work needs a stronger rule source, use Cortex's framework design docs and improve the shared source when a durable rule is missing.
+- Never modify, reference, fork, or optimise Cortex or `cx-framework` from this repository.
+- Consumers adapt forward. Never preserve an old contract with compatibility layers, aliases,
+  wrappers, redirects, overrides, or temporary framework hacks.
+- If the framework is missing something, document it under **🚨 Cortex Action Required** and stop;
+  never recreate it locally.
+- Prefer simpler architecture and deletion over preserving behaviour. Keep one implementation and
+  remove verified dead, duplicate, obsolete, compatibility, legacy, and deprecated code.
+- Evidence beats assumptions: uncertain removals are reported, not guessed.
+- Add a shared abstraction only when it clearly simplifies today's system. Optimise for five-year
+  maintainability, not today's convenience.
+- Tokens carry intent. Components and sections stay sealed; no deep overrides or specificity fights.
+- The page is the product spec: anything that does not support the trust-mark concept does not belong.
 
 ## Key files
 

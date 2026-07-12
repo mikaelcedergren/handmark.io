@@ -12,7 +12,6 @@
     "dev": "ng serve --configuration local --host 127.0.0.1 --port 4230",
     "build": "ng build --configuration prod",
     "build:local": "ng build --configuration local",
-    "serve": "node server/index.mjs",
     "start": "node server/index.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "e2e": "playwright test tests/e2e/handmark.spec.cjs --reporter=line --workers=1",
