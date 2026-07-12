@@ -12,7 +12,7 @@ Current Handmark setup, updated after static-IP HTTPS go-live:
 - Router/default gateway: `192.168.1.1`
 - Public domains: `https://handmark.io`, `https://www.handmark.io`
 - Service (daemon): `com.handmark.server`
-- Health endpoint: `/healthz` (back-compat alias `/api/health`)
+- Health endpoint: `/healthz`
 - HTTPS: live through nginx; certificate renewal is handled by `com.cortex.cert-renewal`
 - Status: live HTTPS on `handmark.io` and `www.handmark.io`
 

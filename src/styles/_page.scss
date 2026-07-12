@@ -83,7 +83,7 @@ p {
   gap: var(--space-lg);
   padding-block: var(--space-sm);
   border-bottom: var(--line-discreet);
-  background: color-mix(in srgb, var(--surface-mid) 88%, transparent);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(16px);
 }
 
@@ -162,7 +162,7 @@ p {
 
 .narrative-section,
 .membership-section {
-  background: var(--surface-low);
+  background: var(--surface-alt);
 }
 
 .hero-grid,
@@ -239,8 +239,8 @@ p {
 .panel {
   border: var(--line);
   border-radius: var(--radius-md);
-  background: var(--surface-high);
-  box-shadow: var(--shadow-dialog);
+  background: var(--surface);
+  box-shadow: var(--shadow-low);
 }
 
 .proof-page {
@@ -300,7 +300,7 @@ p {
   grid-template-columns: minmax(0, 0.4fr) minmax(0, 1fr);
   gap: var(--space-md);
   padding: var(--space-md);
-  background: var(--surface-high);
+  background: var(--surface-alt);
 }
 
 .proof-fields dt,
@@ -329,8 +329,8 @@ p {
   padding: var(--space-md);
   border: var(--line);
   border-radius: var(--radius-md);
-  background: var(--surface-mid);
-  box-shadow: var(--shadow-dialog);
+  background: var(--surface);
+  box-shadow: var(--shadow-low);
 }
 
 .badge-preview span {
@@ -370,7 +370,7 @@ p {
 .conversion-strip {
   padding-block: var(--space-2xl);
   border-bottom: var(--line-discreet);
-  background: var(--surface-low);
+  background: var(--surface-alt);
 }
 
 .conversion-inner {
@@ -518,7 +518,7 @@ p {
   padding: var(--space-sm);
   border: var(--line-discreet);
   border-radius: var(--radius-md);
-  background: var(--surface-mid);
+  background: var(--surface-alt);
   color: var(--ink);
   font-weight: var(--font-weight-bold);
 }
@@ -557,7 +557,7 @@ p {
   justify-content: space-between;
   gap: var(--space-md);
   padding: var(--space-md);
-  background: var(--surface-mid);
+  background: var(--surface-alt);
 }
 
 .record-list span {
@@ -584,7 +584,7 @@ p {
   padding: var(--space-xl);
   border: var(--line-discreet);
   border-radius: var(--radius-md);
-  background: var(--surface-high);
+  background: var(--surface-alt);
 }
 
 .standard-list span {
@@ -662,7 +662,7 @@ p {
 
 .membership-includes li {
   padding: var(--space-md);
-  background: var(--surface-mid);
+  background: var(--surface-alt);
   color: var(--opacity-high);
   font-weight: var(--font-weight-medium);
 }
@@ -791,7 +791,7 @@ p {
 
 .theme-light {
   color: var(--ink);
-  background: var(--surface-mid);
+  background: var(--surface);
 }
 
 // ---------------------------------------------------------------------------
@@ -803,7 +803,7 @@ p {
   place-items: center;
   min-height: 100svh;
   padding: var(--space-lg);
-  background: var(--surface-mid);
+  background: var(--surface);
 }
 
 .login-shell {
@@ -819,8 +819,8 @@ p {
   padding: var(--space-xl);
   border: var(--line);
   border-radius: var(--radius-md);
-  background: var(--surface-high);
-  box-shadow: var(--shadow-dialog);
+  background: var(--surface);
+  box-shadow: var(--shadow-low);
 }
 
 .login-brand {
@@ -849,7 +849,7 @@ p {
   padding: 0 var(--space-md);
   border: var(--line);
   border-radius: var(--radius-md);
-  background: var(--surface-mid);
+  background: var(--surface);
   color: var(--ink);
   font-size: var(--font-size-body);
 }
@@ -924,8 +924,8 @@ html[data-login-error] .login-error {
     padding: var(--space-md);
     border: var(--line);
     border-radius: var(--radius-md);
-    background: var(--surface-low);
-    box-shadow: var(--shadow-dialog);
+    background: var(--surface);
+    box-shadow: var(--shadow-mid);
   }
 
   body.nav-open .nav-panel {
@@ -947,7 +947,7 @@ html[data-login-error] .login-error {
 
   .site-header nav a {
     padding: var(--space-sm) var(--space-md);
-    background: var(--surface-mid);
+    background: var(--surface);
   }
 
   .nav-actions form {

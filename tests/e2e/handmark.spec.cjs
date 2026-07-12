@@ -28,7 +28,7 @@ test("Handmark night-mode membership flow", async ({ page, request }) => {
     background: getComputedStyle(document.body).backgroundColor,
     overflow: document.documentElement.scrollWidth > window.innerWidth + 1
   }));
-  // Night theme surface-mid from the framework tokens.
+  // Night theme surface from the framework tokens.
   expect(loginMetrics.background).toBe("rgb(0, 0, 0)");
   expect(loginMetrics.overflow).toBe(false);
 

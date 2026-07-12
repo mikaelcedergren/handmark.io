@@ -185,7 +185,7 @@ Screenshots are written to:
 
 ## Local service checks
 
-The canonical health check is `/healthz` (with `/api/health` as a back-compat alias); both return a JSON health payload:
+The canonical health check is `/healthz` and returns a JSON health payload:
 
 ```bash
 curl -s http://127.0.0.1:3000/healthz

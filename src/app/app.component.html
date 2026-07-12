@@ -254,10 +254,8 @@
                   [validation]="errors.name"
                   (valueChange)="setField('name', $event)"
                 />
-                <cx-text-field
+                <cx-email-field
                   label="Email"
-                  name="email"
-                  autocomplete="email"
                   [value]="model.email"
                   [validation]="errors.email"
                   (valueChange)="setField('email', $event)"
@@ -312,7 +310,7 @@
               />
               <cx-textarea
                 label="What do you make?"
-                [rows]="6"
+                [minLines]="6"
                 hint="Describe the work, the process, and where human authorship sits."
                 [value]="model.craftSummary"
                 [validation]="errors.craftSummary"
@@ -320,7 +318,7 @@
               />
               <cx-textarea
                 label="Proof links"
-                [rows]="4"
+                [minLines]="4"
                 hint="Portfolio, process notes, studio page, references, or work-in-progress material."
                 [value]="model.proofLinks"
                 [validation]="errors.proofLinks"

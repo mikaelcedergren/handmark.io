@@ -4,6 +4,7 @@ import { DOCUMENT } from '@angular/common';
 import {
   CxButtonComponent,
   CxCheckboxComponent,
+  CxEmailFieldComponent,
   CxIconButtonComponent,
   CxTextFieldComponent,
   CxTextareaComponent,
@@ -33,6 +34,7 @@ const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
   imports: [
     CxButtonComponent,
     CxCheckboxComponent,
+    CxEmailFieldComponent,
     CxIconButtonComponent,
     CxTextFieldComponent,
     CxTextareaComponent,

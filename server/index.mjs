@@ -43,9 +43,6 @@ app.use(compression());
 app.get('/healthz', (_req, res) => {
   res.json(healthPayload('handmark.io', PORT));
 });
-app.get('/api/health', (_req, res) => {
-  res.json(healthPayload('handmark.io', PORT));
-});
 
 app.get('/login', (_req, res) => sendBuiltFile(res, 'login.html'));
 app.get('/login.html', (_req, res) => sendBuiltFile(res, 'login.html'));

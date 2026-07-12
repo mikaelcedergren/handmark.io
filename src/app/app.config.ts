@@ -1,5 +1,6 @@
 import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
+import { provideCxKeyboardFocus } from '@mikaelcedergren/cx-framework';
 
 export const appConfig: ApplicationConfig = {
-  providers: [provideZoneChangeDetection({ eventCoalescing: true })],
+  providers: [provideCxKeyboardFocus(), provideZoneChangeDetection({ eventCoalescing: true })],
 };
