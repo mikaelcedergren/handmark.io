@@ -9,7 +9,6 @@ const password = process.env.HANDMARK_TEST_PASSWORD || "handmark-dev-password";
 const dataDir = path.resolve(__dirname, "..", "..", "data");
 
 test.afterAll(async () => {
-  await fs.rm(path.join(dataDir, "applications.json"), { force: true });
   await fs.rm(path.join(dataDir, "applications.jsonl"), { force: true });
 });
 
