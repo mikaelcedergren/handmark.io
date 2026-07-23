@@ -1,129 +1,151 @@
-<header class="site-header">
-      <a class="brand" href="#top" aria-label="Handmark home">
-        <img src="/assets/handmark-logo.svg?v=20260603-2" alt="">
-        <span>handmark</span>
-      </a>
-      <div class="menu-toggle">
-        <cx-icon-button
-          [icon]="navOpen ? 'remove' : 'menu-horizontal'"
-          variant="default"
-          [ariaLabel]="navOpen ? 'Close menu' : 'Open menu'"
-          [ariaPressed]="navOpen"
-          (pressed)="toggleMenu()"
-        />
-      </div>
-      <div class="nav-panel" id="primary-menu">
-        <nav aria-label="Primary">
-          <a href="#why" (click)="closeMenu()">Why</a>
-          <a href="#proof" (click)="closeMenu()">Proof</a>
-          <a href="#standard" (click)="closeMenu()">Standard</a>
-          <a href="#membership" (click)="closeMenu()">Membership</a>
-        </nav>
-        <div class="nav-actions">
-          <form method="post" action="/logout">
-            <cx-button type="submit" [transparent]="true" text="Log out" />
-          </form>
+<cx-masthead
+  heading="handmark"
+  logoSrc="/assets/handmark-logo.svg?v=20260603-2"
+  homeHref="#top"
+  [items]="mastheadItems"
+  [sticky]="true"
+  menuAriaLabel="Primary menu"
+>
+  <form actions method="post" action="/logout">
+    <cx-button type="submit" [transparent]="true" text="Log out" />
+  </form>
+</cx-masthead>
+
+<main id="top">
+  <section class="hero">
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">Human authorship, publicly verified</p>
+        <h1 class="cx-text-title-1 cx-font-bold">Handmark</h1>
+        <p class="hero-lede cx-text-title-2 cx-text-ink">
+          A public trust mark for work made by a person.
+        </p>
+        <p class="hero-body cx-text-body-lg cx-text-muted">
+          For buyers, human work should not be a mood, a label, or a vague claim. Handmark gives
+          makers a public way to show that care, judgment, and responsibility are still part of the
+          work.
+        </p>
+        <div class="hero-actions">
+          <cx-button
+            mood="primary"
+            size="large"
+            text="Start human review"
+            (pressed)="scrollTo('apply')"
+          />
+        </div>
+        <div class="hero-facts" aria-label="Membership summary">
+          <span>$99 review starts the process</span>
+          <span>Approval requires a walkthrough</span>
+          <span>$79/mo only after approval</span>
         </div>
       </div>
-    </header>
 
-    <main id="top">
-      <section class="hero">
-        <div class="hero-grid">
-          <div class="hero-copy">
-            <p class="eyebrow">Human authorship, publicly verified</p>
-            <h1 class="cx-text-title-1 cx-font-bold">Handmark</h1>
-            <p class="hero-lede cx-text-title-2 cx-text-ink">A public trust mark for work made by a person.</p>
-            <p class="hero-body cx-text-body-lg cx-text-muted">
-              For buyers, human work should not be a mood, a label, or a vague claim. Handmark gives makers a public way to show that care, judgment, and responsibility are still part of the work.
-            </p>
-            <div class="hero-actions">
-              <cx-button mood="primary" size="large" text="Start human review" (pressed)="scrollTo('apply')" />
+      <aside class="proof-showcase" aria-label="Verified member proof page preview">
+        <cx-card class="proof-page-card" padding="none">
+          <div class="proof-page theme-light">
+            <div class="proof-page-top">
+              <img src="/assets/handmark-symbol.svg?v=20260603-2" alt="" />
+              <span>Public proof page</span>
             </div>
-            <div class="hero-facts" aria-label="Membership summary">
-              <span>$99 review starts the process</span>
-              <span>Approval requires a walkthrough</span>
-              <span>$79/mo only after approval</span>
-            </div>
-          </div>
-
-          <aside class="proof-showcase" aria-label="Verified member proof page preview">
-            <div class="proof-page panel theme-light">
-              <div class="proof-page-top">
-                <img src="/assets/handmark-symbol.svg?v=20260603-2" alt="">
-                <span>Public proof page</span>
+            <div class="proof-page-hero">
+              <div>
+                <p class="proof-state">Verified human-made work</p>
+                <h2 class="cx-text-title-1">Mara Holt Studio</h2>
+                <p class="cx-text-muted">
+                  Independent furniture, shaped by hand tools, sketches, and material judgment.
+                </p>
               </div>
-              <div class="proof-page-hero">
-                <div>
-                  <p class="proof-state">Verified human-made work</p>
-                  <h2 class="cx-text-title-1">Mara Holt Studio</h2>
-                  <p class="cx-text-muted">Independent furniture, shaped by hand tools, sketches, and material judgment.</p>
-                </div>
-                <img class="proof-stamp" src="/assets/handmark-stamp.svg?v=20260603-2" alt="Handmark made by human hands stamp">
+              <img
+                class="proof-stamp"
+                src="/assets/handmark-stamp.svg?v=20260603-2"
+                alt="Handmark made by human hands stamp"
+              />
+            </div>
+            <dl class="proof-fields">
+              <div>
+                <dt>Author</dt>
+                <dd>Named person or studio</dd>
               </div>
-              <dl class="proof-fields">
-                <div>
-                  <dt>Author</dt>
-                  <dd>Named person or studio</dd>
-                </div>
-                <div>
-                  <dt>Evidence</dt>
-                  <dd>Portfolio, process, references</dd>
-                </div>
-                <div>
-                  <dt>Status</dt>
-                  <dd>Active member</dd>
-                </div>
-              </dl>
-            </div>
-            <div class="badge-preview">
-              <span>Badge license</span>
-              <strong>Handmark verified</strong>
-            </div>
-            <div class="review-note panel">
-              <span>Review outcome</span>
-              <strong>Approved after process walkthrough</strong>
-              <p class="cx-text-muted">Identity, evidence, and the human role are checked before the mark is issued.</p>
-            </div>
-          </aside>
-        </div>
-      </section>
-
-      <section class="conversion-strip" aria-label="Handmark membership summary">
-        <div class="conversion-inner">
-          <div>
-            <p class="eyebrow">Paid review, not pay-to-display</p>
-            <h2 class="cx-text-title-1">The $99 fee starts the review. Approval is earned.</h2>
+              <div>
+                <dt>Evidence</dt>
+                <dd>Portfolio, process, references</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>Active member</dd>
+              </div>
+            </dl>
           </div>
-          <p class="cx-text-body-lg cx-text-muted">Submitted proof is only the beginning. We contact the applicant, ask them to walk through the process, and issue nothing unless the claim is satisfactory. If not approved, no subscription starts.</p>
-        </div>
-      </section>
-
-      <section id="why" class="section narrative-section">
-        <div class="section-grid">
-          <div class="section-kicker">
-            <p class="eyebrow">Why Handmark exists</p>
-            <h2 class="cx-text-title-1">The human part is becoming harder to see.</h2>
+        </cx-card>
+        <cx-card class="badge-preview" padding="large">
+          <div class="badge-preview-content">
+            <span>Badge license</span>
+            <strong>Handmark verified</strong>
           </div>
-          <div class="story-copy">
-            <p class="cx-text-body-lg cx-text-muted">
-              People value the effort behind a thing. A ring, an article, a chair, or a painting carries more meaning when another human being has spent attention on it and stood behind the result.
-            </p>
-            <p class="cx-text-body-lg cx-text-muted">
-              Handmark exists for the work where that answer matters. It gives honest makers a way to make the human role visible without asking buyers to simply take their word for it.
-            </p>
-          </div>
-        </div>
-      </section>
+        </cx-card>
+        <cx-card
+          class="review-note"
+          heading="Review outcome"
+          icon="check"
+          mood="success"
+          padding="large"
+        >
+          <strong>Approved after process walkthrough</strong>
+          <p class="cx-text-muted">
+            Identity, evidence, and the human role are checked before the mark is issued.
+          </p>
+        </cx-card>
+      </aside>
+    </div>
+  </section>
 
-      <section id="proof" class="section proof-section">
-        <div class="section-heading">
-          <p class="eyebrow">What buyers see</p>
-          <h2 class="cx-text-title-1">More than a badge on a page.</h2>
-          <p class="cx-text-body-lg cx-text-muted">Handmark turns a claim into a visible proof record: who made the work, what was reviewed, how approval was reached, and whether the membership is still active.</p>
-        </div>
-        <div class="buyer-grid">
-          <article class="buyer-card panel product-card">
+  <section class="conversion-strip" aria-label="Handmark membership summary">
+    <div class="conversion-inner">
+      <div>
+        <p class="eyebrow">Paid review, not pay-to-display</p>
+        <h2 class="cx-text-title-1">The $99 fee starts the review. Approval is earned.</h2>
+      </div>
+      <p class="cx-text-body-lg cx-text-muted">
+        Submitted proof is only the beginning. We contact the applicant, ask them to walk through
+        the process, and issue nothing unless the claim is satisfactory. If not approved, no
+        subscription starts.
+      </p>
+    </div>
+  </section>
+
+  <section id="why" class="section narrative-section">
+    <div class="section-grid">
+      <div class="section-kicker">
+        <p class="eyebrow">Why Handmark exists</p>
+        <h2 class="cx-text-title-1">The human part is becoming harder to see.</h2>
+      </div>
+      <div class="story-copy">
+        <p class="cx-text-body-lg cx-text-muted">
+          People value the effort behind a thing. A ring, an article, a chair, or a painting carries
+          more meaning when another human being has spent attention on it and stood behind the
+          result.
+        </p>
+        <p class="cx-text-body-lg cx-text-muted">
+          Handmark exists for the work where that answer matters. It gives honest makers a way to
+          make the human role visible without asking buyers to simply take their word for it.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section id="proof" class="section proof-section">
+    <div class="section-heading">
+      <p class="eyebrow">What buyers see</p>
+      <h2 class="cx-text-title-1">More than a badge on a page.</h2>
+      <p class="cx-text-body-lg cx-text-muted">
+        Handmark turns a claim into a visible proof record: who made the work, what was reviewed,
+        how approval was reached, and whether the membership is still active.
+      </p>
+    </div>
+    <div class="buyer-grid">
+      <article class="buyer-card">
+        <cx-card padding="none">
+          <div class="product-card">
             <div class="product-media theme-light">
               <div class="work-preview" aria-hidden="true">
                 <div class="work-preview-top">
@@ -145,96 +167,139 @@
             <div class="product-copy">
               <p class="proof-state">Public badge</p>
               <h3>Walnut writing desk</h3>
-              <p class="cx-text-muted">Designed, joined, finished, and signed by Mara Holt Studio, with the human process linked directly from the badge.</p>
+              <p class="cx-text-muted">
+                Designed, joined, finished, and signed by Mara Holt Studio, with the human process
+                linked directly from the badge.
+              </p>
               <div class="verified-row">
-                <img src="/assets/handmark-seal.svg?v=20260603-2" alt="">
+                <img src="/assets/handmark-seal.svg?v=20260603-2" alt="" />
                 <span>Human-made work verified by Handmark</span>
               </div>
             </div>
-          </article>
+          </div>
+        </cx-card>
+      </article>
 
-          <article class="buyer-card panel proof-card">
+      <article class="buyer-card">
+        <cx-card padding="large">
+          <div class="proof-card">
             <p class="proof-state">handmark.io/verify/mara-holt</p>
             <h3>Verified member record</h3>
-            <p class="cx-text-muted">Each approved member receives a proof page that explains the review in plain language.</p>
+            <p class="cx-text-muted">
+              Each approved member receives a proof page that explains the review in plain language.
+            </p>
             <ul class="record-list">
               <li><span>Identity</span><strong>Mara Holt Studio</strong></li>
               <li><span>Category</span><strong>Furniture</strong></li>
               <li><span>Review</span><strong>Walkthrough completed</strong></li>
               <li><span>Status</span><strong>Active</strong></li>
             </ul>
-          </article>
-        </div>
-      </section>
+          </div>
+        </cx-card>
+      </article>
+    </div>
+  </section>
 
-      <section id="standard" class="section standard-section">
-        <div class="standard-grid">
-          <div class="section-kicker">
-            <p class="eyebrow">The standard</p>
-            <h2 class="cx-text-title-1">Selective by design.</h2>
-            <p class="supporting-copy cx-text-body-lg cx-text-muted">
-              Tools can support the work. Handmark is about whether a person is still the author: making the judgment calls, carrying responsibility, and being able to explain the process.
+  <section id="standard" class="section standard-section">
+    <div class="standard-grid">
+      <div class="section-kicker">
+        <p class="eyebrow">The standard</p>
+        <h2 class="cx-text-title-1">Selective by design.</h2>
+        <p class="supporting-copy cx-text-body-lg cx-text-muted">
+          Tools can support the work. Handmark is about whether a person is still the author: making
+          the judgment calls, carrying responsibility, and being able to explain the process.
+        </p>
+      </div>
+      <div class="standard-list">
+        <cx-card padding="large">
+          <article class="standard-item">
+            <span>01</span>
+            <h3>Walkthrough required</h3>
+            <p class="cx-text-muted">
+              Submitted proof is the starting point. We contact the applicant and ask them to walk
+              us through the process, digitally or in person.
             </p>
-          </div>
-          <div class="standard-list">
-            <article>
-              <span>01</span>
-              <h3>Walkthrough required</h3>
-              <p class="cx-text-muted">Submitted proof is the starting point. We contact the applicant and ask them to walk us through the process, digitally or in person.</p>
-            </article>
-            <article>
-              <span>02</span>
-              <h3>Evidence required</h3>
-              <p class="cx-text-muted">Applicants support the claim through process material, references, studio context, work-in-progress records, direct contact, or inspection.</p>
-            </article>
-            <article>
-              <span>03</span>
-              <h3>No proof, no stamp</h3>
-              <p class="cx-text-muted">The mark is only issued when the claim is satisfactory. The stamp is not a decoration, and it is not granted on trust alone.</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section id="membership" class="section membership-section">
-        <div class="membership-layout">
-          <div class="membership-copy">
-            <p class="eyebrow">Membership</p>
-            <h2 class="cx-text-title-1">One subscription. One standard.</h2>
-            <p class="cx-text-body-lg cx-text-muted">There are no tiers and no lightweight version of approval. The review starts at $99 and covers the human review plus walkthrough. If approved, membership continues at $79 per month. If not approved, no subscription starts.</p>
-          </div>
-          <article class="pricing-card panel membership-card">
-            <div class="plan-top">
-              <p class="plan-flag">Verification membership</p>
-              <h3>Handmark Verification</h3>
-            </div>
-            <p class="price">$99<span> review fee</span></p>
-            <p class="subscription-note">Then $79/mo only if approved.</p>
-            <ul class="membership-includes">
-              <li>Rigorous human review</li>
-              <li>Process walkthrough</li>
-              <li>Badge license</li>
-              <li>Public proof page</li>
-            </ul>
           </article>
-        </div>
-      </section>
-
-      <section id="apply" class="section application-section">
-        <div class="application-layout">
-          <div class="section-kicker">
-            <p class="eyebrow">Apply</p>
-            <h2 class="cx-text-title-1">Tell us what you make.</h2>
-            <p class="supporting-copy cx-text-body-lg cx-text-muted">
-              Keep it plain. Share who you are, where the work lives, and what evidence can prove the human-made claim. The next step is direct contact, not automatic approval.
+        </cx-card>
+        <cx-card padding="large">
+          <article class="standard-item">
+            <span>02</span>
+            <h3>Evidence required</h3>
+            <p class="cx-text-muted">
+              Applicants support the claim through process material, references, studio context,
+              work-in-progress records, direct contact, or inspection.
             </p>
-          </div>
+          </article>
+        </cx-card>
+        <cx-card padding="large">
+          <article class="standard-item">
+            <span>03</span>
+            <h3>No proof, no stamp</h3>
+            <p class="cx-text-muted">
+              The mark is only issued when the claim is satisfactory. The stamp is not a decoration,
+              and it is not granted on trust alone.
+            </p>
+          </article>
+        </cx-card>
+      </div>
+    </div>
+  </section>
 
-          <form class="application-form panel" id="application-form" (submit)="$event.preventDefault(); submitApplication()">
+  <section id="membership" class="section membership-section">
+    <div class="membership-layout">
+      <div class="membership-copy">
+        <p class="eyebrow">Membership</p>
+        <h2 class="cx-text-title-1">One subscription. One standard.</h2>
+        <p class="cx-text-body-lg cx-text-muted">
+          There are no tiers and no lightweight version of approval. The review starts at $99 and
+          covers the human review plus walkthrough. If approved, membership continues at $79 per
+          month. If not approved, no subscription starts.
+        </p>
+      </div>
+      <cx-card class="membership-card" padding="large">
+        <article class="pricing-card">
+          <div class="plan-top">
+            <p class="plan-flag">Verification membership</p>
+            <h3>Handmark Verification</h3>
+          </div>
+          <p class="price">$99<span> review fee</span></p>
+          <p class="subscription-note">Then $79/mo only if approved.</p>
+          <ul class="membership-includes">
+            <li>Rigorous human review</li>
+            <li>Process walkthrough</li>
+            <li>Badge license</li>
+            <li>Public proof page</li>
+          </ul>
+        </article>
+      </cx-card>
+    </div>
+  </section>
+
+  <section id="apply" class="section application-section">
+    <div class="application-layout">
+      <div class="section-kicker">
+        <p class="eyebrow">Apply</p>
+        <h2 class="cx-text-title-1">Tell us what you make.</h2>
+        <p class="supporting-copy cx-text-body-lg cx-text-muted">
+          Keep it plain. Share who you are, where the work lives, and what evidence can prove the
+          human-made claim. The next step is direct contact, not automatic approval.
+        </p>
+      </div>
+
+      <form
+        class="application-form"
+        id="application-form"
+        (submit)="$event.preventDefault(); submitApplication()"
+      >
+        <cx-card class="application-card" padding="large">
+          <div class="application-card-content">
             <div class="membership-summary" aria-label="Selected review path">
               <span>Application path</span>
               <strong>$99 human review</strong>
-              <small>The fee covers review and walkthrough. Membership begins at $79/mo only if approved.</small>
+              <small
+                >The fee covers review and walkthrough. Membership begins at $79/mo only if
+                approved.</small
+              >
             </div>
 
             <div class="form-section">
@@ -278,7 +343,9 @@
                 <span>02</span>
                 <div>
                   <h3>Work and proof</h3>
-                  <p>Give us enough context to decide whether a review walkthrough is appropriate.</p>
+                  <p>
+                    Give us enough context to decide whether a review walkthrough is appropriate.
+                  </p>
                 </div>
               </div>
               <div class="form-grid">
@@ -331,7 +398,10 @@
                 <span>03</span>
                 <div>
                   <h3>Review expectation</h3>
-                  <p>Handmark will contact you before approval. The stamp is never issued from a form alone.</p>
+                  <p>
+                    Handmark will contact you before approval. The stamp is never issued from a form
+                    alone.
+                  </p>
                 </div>
               </div>
               <cx-text-field
@@ -344,21 +414,43 @@
               />
             </div>
 
-            <cx-checkbox
-              class="agree-row"
-              text="I confirm this application is accurate and understand the $99 fee starts review, not approval. Handmark will contact me for a process walkthrough before any stamp is issued."
-              [hint]="agreeError || undefined"
-              [selected]="model.agree"
-              (selectedChange)="setAgree($event)"
-            />
+            <div
+              class="agreement"
+              role="group"
+              aria-label="Review terms"
+              aria-describedby="agreement-validation"
+              [attr.aria-invalid]="agreeError ? 'true' : null"
+            >
+              <cx-checkbox
+                text="I confirm this application is accurate and understand the $99 fee starts review, not approval. Handmark will contact me for a process walkthrough before any stamp is issued."
+                [selected]="model.agree"
+                (selectedChange)="setAgree($event)"
+              />
+              <cx-validation-message
+                id="agreement-validation"
+                type="inline"
+                [messages]="agreementValidationMessages"
+              />
+            </div>
             <cx-button mood="primary" size="large" type="submit" text="Apply for review" />
-            <output class="form-status" id="form-status" aria-live="polite" [attr.data-state]="formState || null">{{ formStatus }}</output>
-          </form>
-        </div>
-      </section>
-    </main>
+            @if (formStatus) {
+              <cx-alert
+                id="form-status"
+                [heading]="formStatus"
+                [mood]="
+                  formState === 'success' ? 'success' : formState === 'error' ? 'danger' : 'default'
+                "
+                [loading]="formState === 'pending'"
+              />
+            }
+          </div>
+        </cx-card>
+      </form>
+    </div>
+  </section>
+</main>
 
-    <footer class="site-footer">
-      <span>Handmark.io</span>
-      <span>Made by human hands</span>
-    </footer>
+<footer class="site-footer">
+  <span>Handmark.io</span>
+  <span>Made by human hands</span>
+</footer>

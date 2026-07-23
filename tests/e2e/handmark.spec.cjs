@@ -2,7 +2,7 @@ const { test, expect } = require("@playwright/test");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const baseUrl = "http://127.0.0.1:3000";
+const baseUrl = process.env.HANDMARK_BASE_URL || "http://127.0.0.1:3000";
 const password = process.env.HANDMARK_TEST_PASSWORD || "handmark-dev-password";
 // The intake files live in the repo's own data/, resolved from this spec's location so the
 // suite works on the production Mac mini and on a development mirror alike.
@@ -67,7 +67,6 @@ test("Handmark night-mode membership flow", async ({ page, request }) => {
     const heroSection = document.querySelector(".hero");
     const firstSection = document.querySelector(".section");
     const conversionStrip = document.querySelector(".conversion-strip");
-    const pricing = document.querySelector(".pricing-card");
     const formEl = document.querySelector(".application-form");
     const styles = (el) => {
       const computed = getComputedStyle(el);
@@ -94,8 +93,9 @@ test("Handmark night-mode membership flow", async ({ page, request }) => {
       heroStyles: styles(heroSection),
       sectionStyles: styles(firstSection),
       conversionStyles: styles(conversionStrip),
-      pricingStyles: styles(pricing),
-      formStyles: styles(formEl)
+      membershipSurface: document.querySelector(".membership-card")?.tagName,
+      applicationSurface: formEl.querySelector(".application-card")?.tagName,
+      buyerSurfaceCount: document.querySelectorAll(".buyer-card > cx-card").length
     };
   });
   expect(seo.title).toContain("Human-Made Work Verification");
@@ -121,14 +121,23 @@ test("Handmark night-mode membership flow", async ({ page, request }) => {
   expect(seo.sectionStyles.paddingBottom).toBe("64px");
   expect(seo.conversionStyles.paddingTop).toBe("64px");
   expect(seo.conversionStyles.paddingBottom).toBe("64px");
-  // Card padding uses the framework --space-xl (32px).
-  expect(seo.pricingStyles.paddingLeft).toBe("32px");
-  expect(seo.formStyles.paddingLeft).toBe("32px");
+  // Self-contained marketing and application surfaces use the framework card.
+  expect(seo.membershipSurface).toBe("CX-CARD");
+  expect(seo.applicationSurface).toBe("CX-CARD");
+  expect(seo.buyerSurfaceCount).toBe(2);
 
   await page.screenshot({
     path: "/private/tmp/handmark-desktop.png",
     fullPage: true
   });
+
+  // Submit-time validation stays with each framework field and moves focus to
+  // the first invalid control.
+  await page.getByRole("button", { name: "Apply for review" }).click();
+  await expect(page.locator('input[name="name"]')).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator('input[name="name"]')).toBeFocused();
+  await expect(page.getByText("Confirm the review terms to continue.")).toBeVisible();
+  await expect(page.locator("#form-status")).toHaveCount(0);
 
   // Text fields forward their name to the native input; textareas and the
   // checkbox are framework primitives addressed by their accessible label.
@@ -178,13 +187,16 @@ test("Handmark night-mode membership flow", async ({ page, request }) => {
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle" });
-  await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
-  await page.getByRole("button", { name: "Open menu" }).click();
-  await expect(page.getByRole("button", { name: "Close menu" })).toBeVisible();
+  const mobileMenu = page.getByRole("button", { name: "Primary menu" });
+  await expect(mobileMenu).toBeVisible();
+  await expect(mobileMenu).toHaveAttribute("aria-expanded", "false");
+  await mobileMenu.click();
+  await expect(mobileMenu).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("link", { name: "Why", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Apply for Handmark" })).toHaveCount(0);
   await page.getByRole("link", { name: "Why", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
+  await expect(mobileMenu).toHaveAttribute("aria-expanded", "false");
   const mobileMetrics = await page.evaluate(() => ({
     overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
     hasMembership: document.body.textContent.includes("Handmark Verification")

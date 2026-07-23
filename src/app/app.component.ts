@@ -1,14 +1,19 @@
 import { isPlatformBrowser } from '@angular/common';
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, Inject, OnDestroy, PLATFORM_ID } from '@angular/core';
+import { ChangeDetectorRef, Component, Inject, PLATFORM_ID } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 import {
+  CxAlertComponent,
   CxButtonComponent,
+  CxCardComponent,
   CxCheckboxComponent,
   CxEmailFieldComponent,
-  CxIconButtonComponent,
+  CxMastheadComponent,
   CxTextFieldComponent,
   CxTextareaComponent,
+  CxValidationMessageComponent,
   type CxFieldValidation,
+  type CxMastheadItem,
+  type CxValidationMessage,
 } from '@mikaelcedergren/cx-framework';
 
 interface ApplicationModel {
@@ -32,19 +37,28 @@ const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
   selector: 'app-root',
   standalone: true,
   imports: [
+    CxAlertComponent,
     CxButtonComponent,
+    CxCardComponent,
     CxCheckboxComponent,
     CxEmailFieldComponent,
-    CxIconButtonComponent,
+    CxMastheadComponent,
     CxTextFieldComponent,
     CxTextareaComponent,
+    CxValidationMessageComponent,
   ],
   templateUrl: './app.component.html',
 })
-export class AppComponent implements AfterViewInit, OnDestroy {
-  navOpen = false;
+export class AppComponent {
   formStatus = '';
   formState = '';
+
+  readonly mastheadItems: CxMastheadItem[] = [
+    { id: 'why', label: 'Why', href: '#why' },
+    { id: 'proof', label: 'Proof', href: '#proof' },
+    { id: 'standard', label: 'Standard', href: '#standard' },
+    { id: 'membership', label: 'Membership', href: '#membership' },
+  ];
 
   readonly model: ApplicationModel = {
     name: '',
@@ -63,13 +77,8 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   agreeError = '';
 
   private readonly isBrowser: boolean;
-  private mediaQuery?: MediaQueryList;
-  private readonly mediaListener = (event: MediaQueryListEvent) => {
-    if (event.matches) this.closeMenu();
-  };
 
   constructor(
-    private readonly elementRef: ElementRef<HTMLElement>,
     private readonly changeDetector: ChangeDetectorRef,
     @Inject(DOCUMENT) private readonly document: Document,
     @Inject(PLATFORM_ID) platformId: object,
@@ -77,45 +86,11 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.isBrowser = isPlatformBrowser(platformId);
   }
 
-  ngAfterViewInit(): void {
-    if (!this.isBrowser) return;
-    // Matches the framework mobile breakpoint so the drawer closes exactly when
-    // the layout returns to the desktop header.
-    this.mediaQuery = window.matchMedia('(min-width: 720px)');
-    this.mediaQuery.addEventListener('change', this.mediaListener);
-  }
-
-  ngOnDestroy(): void {
-    this.mediaQuery?.removeEventListener('change', this.mediaListener);
-    this.document.body.classList.remove('nav-open');
-  }
-
-  toggleMenu(): void {
-    this.setMenuOpen(!this.navOpen);
-  }
-
-  closeMenu(): void {
-    this.setMenuOpen(false);
-  }
-
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    this.closeMenu();
-  }
-
-  @HostListener('document:click', ['$event'])
-  onDocumentClick(event: MouseEvent): void {
-    if (!this.navOpen) return;
-    const target = event.target;
-    if (!(target instanceof Node)) return;
-    const host = this.elementRef.nativeElement;
-    const navPanel = host.querySelector('#primary-menu');
-    const menuToggle = host.querySelector('.menu-toggle');
-    if (!navPanel?.contains(target) && !menuToggle?.contains(target)) this.closeMenu();
+  get agreementValidationMessages(): readonly CxValidationMessage[] {
+    return this.agreeError ? [{ type: 'error', message: this.agreeError }] : [];
   }
 
   scrollTo(id: string): void {
-    this.closeMenu();
     if (!this.isBrowser) return;
     this.document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -132,8 +107,9 @@ export class AppComponent implements AfterViewInit, OnDestroy {
 
   async submitApplication(): Promise<void> {
     if (!this.validate()) {
-      this.formStatus = 'Fix the highlighted fields and try again.';
-      this.formState = 'error';
+      this.formStatus = '';
+      this.formState = '';
+      this.focusFirstInvalidField();
       return;
     }
 
@@ -221,8 +197,17 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  private setMenuOpen(isOpen: boolean): void {
-    this.navOpen = isOpen;
-    this.document.body.classList.toggle('nav-open', isOpen);
+  private focusFirstInvalidField(): void {
+    if (!this.isBrowser) return;
+
+    this.changeDetector.detectChanges();
+    const form = this.document.getElementById('application-form');
+    const invalidField = form?.querySelector<HTMLElement>(
+      'input[aria-invalid="true"], textarea[aria-invalid="true"]',
+    );
+    const agreement = !this.model.agree
+      ? form?.querySelector<HTMLElement>('input[type="checkbox"]')
+      : null;
+    (invalidField ?? agreement)?.focus();
   }
 }
