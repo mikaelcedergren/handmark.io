@@ -106,6 +106,8 @@ export class AppComponent {
   }
 
   async submitApplication(): Promise<void> {
+    if (this.formState === 'pending') return;
+
     if (!this.validate()) {
       this.formStatus = '';
       this.formState = '';
@@ -137,18 +139,28 @@ export class AppComponent {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(15_000),
       });
-      const result = await response.json();
+      const result = (await response.json().catch(() => null)) as {
+        id?: string;
+        message?: string;
+        ok?: boolean;
+      } | null;
 
-      if (!response.ok || !result.ok) {
-        throw new Error(result.message || 'Application could not be saved.');
+      if (!response.ok || !result?.ok || !result.id) {
+        throw new Error(result?.message || 'Application could not be saved.');
       }
 
       this.resetModel();
       this.formStatus = `Application ${result.id} received. We will contact you for the process walkthrough.`;
       this.formState = 'success';
     } catch (error) {
-      this.formStatus = error instanceof Error ? error.message : 'Application could not be saved.';
+      this.formStatus =
+        error instanceof DOMException && error.name === 'TimeoutError'
+          ? 'The application took too long to save. Please try again.'
+          : error instanceof Error
+            ? error.message
+            : 'Application could not be saved.';
       this.formState = 'error';
     } finally {
       // The status update lands after an await, so flush it explicitly rather

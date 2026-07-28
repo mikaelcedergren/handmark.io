@@ -29,10 +29,11 @@ Open `http://127.0.0.1:3000` and enter the password.
 For a production-like local run:
 
 ```bash
-PORT=3000 HOST=127.0.0.1 HANDMARK_PASSWORD='replace-with-a-strong-password' SESSION_SECRET='change-me-to-a-long-secret' pnpm start
+PORT=3000 HOST=127.0.0.1 HANDMARK_PASSWORD='replace-with-a-strong-password' SESSION_SECRET='replace-with-at-least-32-random-characters' pnpm start
 ```
 
-If `NODE_ENV=production`, `SESSION_SECRET` must be set. The server refuses to start with the development default.
+If `NODE_ENV=production`, `SESSION_SECRET` must contain at least 32 characters and
+`HANDMARK_PASSWORD` at least 12. The server refuses to start with weak or missing values.
 
 ## Domain and hosting
 
@@ -47,14 +48,18 @@ The current form records an application and selected review path. To charge the 
 ```bash
 pnpm install
 pnpm build
-pnpm start
+pnpm e2e
 ```
 
-For browser verification, start the server with a test password and run:
+Publish production content with:
 
 ```bash
-HANDMARK_TEST_PASSWORD=handmark-dev-password pnpm e2e
+node ../server-ops/bin/site-release.mjs --site handmark --apply
 ```
+
+The release and rollback contract is documented once in the root
+[`SERVER-STANDARD.md`](../SERVER-STANDARD.md). The E2E command is self-contained and isolated from
+the production port, build, and application data.
 
 ## Server standard
 

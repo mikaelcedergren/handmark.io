@@ -11,35 +11,47 @@
   "scripts": {
     "dev": "ng serve --configuration local --host 127.0.0.1 --port 4230",
     "build": "ng build --configuration prod",
+    "build:release": "ng build --configuration prod --output-path \"$SITE_RELEASE_DIR\"",
     "build:local": "ng build --configuration local",
     "start": "node server/index.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "test:server": "node --test tests/server/*.test.mjs",
     "e2e": "playwright test tests/e2e/handmark.spec.cjs --reporter=line --workers=1",
     "e2e:install": "playwright install chromium",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@angular/common": "^22.0.2",
-    "@angular/compiler": "^22.0.2",
-    "@angular/core": "^22.0.2",
-    "@angular/platform-browser": "^22.0.2",
-    "@angular/platform-server": "^22.0.2",
-    "@angular/router": "^22.0.2",
-    "@angular/ssr": "^22.0.3",
+    "@angular/cdk": "^22.0.6",
+    "@angular/common": "^22.0.8",
+    "@angular/compiler": "^22.0.8",
+    "@angular/core": "^22.0.8",
+    "@angular/platform-browser": "^22.0.8",
+    "@angular/platform-server": "^22.0.8",
+    "@angular/router": "^22.0.8",
+    "@angular/ssr": "^22.0.8",
     "@mikaelcedergren/cx-framework": "github:mikaelcedergren/cx-framework#main",
-    "compression": "^1.7.5",
-    "express": "^4.21.2",
+    "compression": "^1.8.1",
+    "express": "^5.2.1",
     "rxjs": "~7.8.2",
     "tslib": "^2.8.1",
-    "zone.js": "~0.16.0"
+    "zone.js": "~0.16.2"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^22.0.3",
-    "@angular/cli": "^22.0.3",
-    "@angular/compiler-cli": "^22.0.2",
+    "@angular/build": "^22.0.8",
+    "@angular/cli": "^22.0.8",
+    "@angular/compiler-cli": "^22.0.8",
     "@playwright/test": "1.60.0",
-    "prettier": "^3.8.1",
+    "prettier": "^3.9.6",
     "typescript": "~6.0.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@mikaelcedergren/cx-framework",
+      "@parcel/watcher",
+      "esbuild",
+      "lmdb",
+      "msgpackr-extract"
+    ]
   }
 }

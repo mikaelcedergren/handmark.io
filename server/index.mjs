@@ -6,19 +6,27 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  createBrowserServing,
   hardenApp,
   healthPayload,
+  missingAsset404,
   securityHeaders,
   staticOptions,
 } from '../../server-ops/lib/site-server.mjs';
+import { retainedReleaseAssetMiddleware } from '../../server-ops/lib/site-release.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = resolve(__dirname, '..');
-const BROWSER = join(ROOT, 'dist', 'browser');
-const dataDir = join(ROOT, 'data');
-const applicationsPath = join(dataDir, 'applications.jsonl');
-
 loadLocalEnv(join(ROOT, '.env'));
+
+const browserServing = createBrowserServing({
+  express,
+  repoRoot: ROOT,
+  legacyBrowserDir: join(ROOT, 'dist', 'browser'),
+  browserDirOverride: process.env.SITE_BROWSER_DIR,
+});
+const dataDir = resolve(ROOT, process.env.DATA_DIR ?? 'data');
+const applicationsPath = join(dataDir, 'applications.jsonl');
 
 const PORT = Number.parseInt(process.env.PORT ?? '3000', 10);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -27,12 +35,18 @@ const PASSWORD = process.env.HANDMARK_PASSWORD ?? (isProduction ? '' : 'handmark
 const DEFAULT_SESSION_SECRET = 'handmark-local-development-secret-change-me';
 const SESSION_SECRET = process.env.SESSION_SECRET ?? (isProduction ? '' : DEFAULT_SESSION_SECRET);
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
+const MIN_PASSWORD_LENGTH = 12;
+const MIN_SESSION_SECRET_LENGTH = 32;
 
-if (isProduction && !process.env.HANDMARK_PASSWORD) {
-  throw new Error('HANDMARK_PASSWORD must be set in production.');
+if (isProduction && PASSWORD.length < MIN_PASSWORD_LENGTH) {
+  throw new Error(
+    `HANDMARK_PASSWORD must be at least ${MIN_PASSWORD_LENGTH} characters in production.`,
+  );
 }
-if (isProduction && !process.env.SESSION_SECRET) {
-  throw new Error('SESSION_SECRET must be set in production.');
+if (isProduction && SESSION_SECRET.length < MIN_SESSION_SECRET_LENGTH) {
+  throw new Error(
+    `SESSION_SECRET must be at least ${MIN_SESSION_SECRET_LENGTH} characters in production.`,
+  );
 }
 
 const app = express();
@@ -44,18 +58,12 @@ app.get('/healthz', (_req, res) => {
   res.json(healthPayload('handmark.io', PORT));
 });
 
-app.get('/login', (_req, res) => sendBuiltFile(res, 'login.html'));
-app.get('/styles.css', (_req, res) => sendBuiltFile(res, 'styles.css'));
-app.get('/robots.txt', (_req, res) => sendBuiltFile(res, 'robots.txt'));
-app.get('/sitemap.xml', (_req, res) => sendBuiltFile(res, 'sitemap.xml'));
-app.get('/site.webmanifest', (_req, res) => sendBuiltFile(res, 'site.webmanifest'));
-app.use(
-  '/assets',
-  express.static(join(BROWSER, 'assets'), {
-    immutable: true,
-    maxAge: '1y',
-  }),
-);
+app.get('/login', (req, res) => sendBuiltFile(req, res, 'login.html'));
+app.get('/styles.css', (req, res) => sendBuiltFile(req, res, 'styles.css'));
+app.get('/robots.txt', (req, res) => sendBuiltFile(req, res, 'robots.txt'));
+app.get('/sitemap.xml', (req, res) => sendBuiltFile(req, res, 'sitemap.xml'));
+app.get('/site.webmanifest', (req, res) => sendBuiltFile(req, res, 'site.webmanifest'));
+app.use('/assets', browserServing.staticMiddleware({ immutable: true, maxAge: '1y' }, 'assets'));
 
 app.post('/login', express.urlencoded({ extended: false, limit: '16kb' }), (req, res) => {
   if (!allowRequest(req, 'login', 20, 15 * 60 * 1000)) {
@@ -91,10 +99,43 @@ app.use('/api', (_req, res) => {
   res.status(404).json({ ok: false, message: 'API route not found.' });
 });
 
-app.use(express.static(BROWSER, staticOptions()));
-app.get('*', (_req, res) => sendBuiltFile(res, 'index.html'));
+app.use(browserServing.staticMiddleware(staticOptions()));
+if (browserServing.useReleaseHistory) {
+  app.use(retainedReleaseAssetMiddleware({ repoRoot: ROOT }));
+}
+app.use(missingAsset404());
+app.get(/.*/, (req, res) => sendBuiltFile(req, res, 'index.html'));
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
 
-app.listen(PORT, HOST, () => {
+  const providedStatus = Number(error?.status ?? error?.statusCode);
+  const status =
+    Number.isInteger(providedStatus) && providedStatus >= 400 && providedStatus < 500
+      ? providedStatus
+      : 500;
+  if (status === 500) console.error('[handmark] unhandled request error', error);
+
+  const message =
+    status === 413
+      ? 'Request body is too large.'
+      : status === 400
+        ? 'Request body is invalid.'
+        : 'The request could not be processed.';
+  if (req.path.startsWith('/api/')) {
+    res.status(status).json({ ok: false, message });
+    return;
+  }
+  res.status(status).type('text/plain').send(message);
+});
+
+app.listen(PORT, HOST, (error) => {
+  if (error) {
+    console.error(`[handmark] failed to listen on http://${HOST}:${PORT}`, error);
+    throw error;
+  }
   console.log(`[handmark] listening on http://${HOST}:${PORT}`);
 });
 
@@ -108,7 +149,10 @@ function loadLocalEnv(filePath) {
     const key = trimmed.slice(0, index).trim();
     let value = trimmed.slice(index + 1).trim();
     if (!/^[A-Z_][A-Z0-9_]*$/.test(key) || process.env[key] !== undefined) continue;
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
       value = value.slice(1, -1);
     }
     process.env[key] = value;
@@ -119,8 +163,8 @@ function readFileSyncUtf8(filePath) {
   return readFileSync(filePath, 'utf8');
 }
 
-function sendBuiltFile(res, fileName) {
-  const filePath = join(BROWSER, fileName);
+function sendBuiltFile(req, res, fileName) {
+  const filePath = join(browserServing.browserDirForRequest(req), fileName);
   if (!existsSync(filePath)) {
     res.status(503).type('text/plain').send('Build missing. Run pnpm build first.');
     return;
@@ -153,15 +197,14 @@ function createSessionCookie() {
 function isAuthenticated(req) {
   const token = req.headers.cookie
     ?.split(';')
-    .map(cookie => cookie.trim())
-    .find(cookie => cookie.startsWith('hm_session='))
+    .map((cookie) => cookie.trim())
+    .find((cookie) => cookie.startsWith('hm_session='))
     ?.slice('hm_session='.length);
   if (!token || !token.includes('.')) return false;
 
-  const [encoded, signature] = decodeURIComponent(token).split('.');
-  if (!encoded || !signature || !constantTimeEqual(sign(encoded), signature)) return false;
-
   try {
+    const [encoded, signature] = decodeURIComponent(token).split('.');
+    if (!encoded || !signature || !constantTimeEqual(sign(encoded), signature)) return false;
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
     const ageSeconds = (Date.now() - Number(payload.issuedAt || 0)) / 1000;
     return ageSeconds >= 0 && ageSeconds <= SESSION_MAX_AGE_SECONDS;
@@ -202,15 +245,35 @@ function cleanupRateBuckets(now) {
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-function requireField(payload, field) {
-  const value = String(payload[field] || '').trim();
-  if (!value) throw new Error(`${field} is required.`);
+class ValidationError extends Error {}
+
+function requireField(payload, field, maxLength = 10_000) {
+  const raw = payload[field];
+  if (typeof raw !== 'string') {
+    throw new ValidationError(`${field} must be text.`);
+  }
+  const value = raw.trim();
+  if (!value) throw new ValidationError(`${field} is required.`);
+  if (value.length > maxLength) {
+    throw new ValidationError(`${field} is too long.`);
+  }
   return value;
 }
 
 function requireEmail(payload) {
-  const value = requireField(payload, 'email');
-  if (!EMAIL_PATTERN.test(value)) throw new Error('Enter a valid email address.');
+  const value = requireField(payload, 'email', 254);
+  if (!EMAIL_PATTERN.test(value)) throw new ValidationError('Enter a valid email address.');
+  return value;
+}
+
+function optionalField(payload, field, maxLength) {
+  const raw = payload[field];
+  if (raw === undefined || raw === null || raw === '') return '';
+  if (typeof raw !== 'string') {
+    throw new ValidationError(`${field} must be text.`);
+  }
+  const value = raw.trim();
+  if (value.length > maxLength) throw new ValidationError(`${field} is too long.`);
   return value;
 }
 
@@ -222,25 +285,32 @@ async function handleApplication(req, res) {
     }
 
     const payload = req.body ?? {};
-    const plan = requireField(payload, 'plan');
-    if (plan !== 'verification') throw new Error('Choose a valid plan.');
-    if (!payload.agree) throw new Error('Agreement is required.');
+    const plan = requireField(payload, 'plan', 32);
+    if (plan !== 'verification') throw new ValidationError('Choose a valid plan.');
+    if (payload.agree !== true) throw new ValidationError('Agreement is required.');
+
+    const billingCycle = requireField(payload, 'billingCycle', 32);
+    if (billingCycle !== 'monthly') throw new ValidationError('Choose a valid billing cycle.');
+    const paymentPreference = requireField(payload, 'paymentPreference', 32);
+    if (paymentPreference !== 'after-approval') {
+      throw new ValidationError('Choose a valid payment preference.');
+    }
 
     const application = {
       id: `HM-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
       createdAt: new Date().toISOString(),
       plan,
-      billingCycle: String(payload.billingCycle || 'monthly'),
-      name: requireField(payload, 'name'),
+      billingCycle,
+      name: requireField(payload, 'name', 200),
       email: requireEmail(payload),
-      contactPreference: requireField(payload, 'contactPreference'),
-      brand: requireField(payload, 'brand'),
-      website: requireField(payload, 'website'),
-      category: requireField(payload, 'category'),
+      contactPreference: requireField(payload, 'contactPreference', 500),
+      brand: requireField(payload, 'brand', 200),
+      website: requireField(payload, 'website', 2_048),
+      category: requireField(payload, 'category', 200),
       craftSummary: requireField(payload, 'craftSummary'),
       proofLinks: requireField(payload, 'proofLinks'),
-      walkthroughPreference: String(payload.walkthroughPreference || '').trim(),
-      paymentPreference: requireField(payload, 'paymentPreference'),
+      walkthroughPreference: optionalField(payload, 'walkthroughPreference', 1_000),
+      paymentPreference,
     };
 
     await appendApplication(application);
@@ -250,15 +320,16 @@ async function handleApplication(req, res) {
       message: 'Application received. The next step is human review and process walkthrough.',
     });
   } catch (error) {
-    res.status(400).json({
-      ok: false,
-      message: error instanceof Error ? error.message : 'Could not save the application.',
-    });
+    if (error instanceof ValidationError) {
+      res.status(400).json({ ok: false, message: error.message });
+      return;
+    }
+    console.error('[handmark] application save failed', error);
+    res.status(500).json({ ok: false, message: 'Could not save the application. Try again.' });
   }
 }
 
 async function appendApplication(application) {
   await mkdir(dataDir, { recursive: true });
-  await appendFile(applicationsPath, `${JSON.stringify(application)}
-`);
+  await appendFile(applicationsPath, `${JSON.stringify(application)}\n`);
 }

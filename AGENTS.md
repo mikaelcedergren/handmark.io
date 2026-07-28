@@ -36,10 +36,19 @@ Run locally:
 pnpm start
 ```
 
+Publish production content with:
+
+```bash
+node ../server-ops/bin/site-release.mjs --site handmark --apply
+```
+
+The shared release behavior and rollback procedure are owned by the root
+[`SERVER-STANDARD.md`](../SERVER-STANDARD.md).
+
 Production-like local run:
 
 ```bash
-PORT=3000 HOST=127.0.0.1 HANDMARK_PASSWORD='replace-with-a-strong-password' SESSION_SECRET='change-me-to-a-long-secret' pnpm start
+PORT=3000 HOST=127.0.0.1 HANDMARK_PASSWORD='replace-with-a-strong-password' SESSION_SECRET='replace-with-at-least-32-random-characters' pnpm start
 ```
 
 Keep `HOST=127.0.0.1` unless there is a deliberate reason to expose the Node app directly. Public traffic should reach nginx first.
@@ -148,11 +157,15 @@ If you change the form, keep `src/app/app.component.*`, `server/index.mjs`, and 
 
 Use Playwright for UI verification. Do not claim a visual change is verified unless you actually ran it or explicitly say you could not.
 
-Run the local Playwright script after starting the server with a known test password:
+Run the isolated Playwright script:
 
 ```bash
-HANDMARK_TEST_PASSWORD=handmark-dev-password pnpm e2e
+pnpm e2e
 ```
+
+The Playwright config builds and serves on reserved port `4231`, uses an explicit local build path,
+and writes applications to a temporary test-only directory. The suite refuses the production port
+and production `data/` directory.
 
 The test covers:
 
@@ -207,7 +220,8 @@ Expected localgate behavior is separate from Handmark. Do not "fix" localgate wh
 - Keep edits scoped to Handmark files.
 - Keep comments sparse and useful.
 - Use ASCII by default.
-- Keep `SESSION_SECRET` mandatory for `NODE_ENV=production`; the development default is local-only.
+- Keep `SESSION_SECRET` at least 32 characters and `HANDMARK_PASSWORD` at least 12 characters when
+  `NODE_ENV=production`; the development defaults are local-only.
 - When changing the UI, update tests if the public contract changed.
 - When changing domain/server setup, update `DOMAIN_SETUP.md`.
 
