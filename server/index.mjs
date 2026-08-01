@@ -1,7 +1,6 @@
 import compression from 'compression';
 import crypto from 'node:crypto';
 import express from 'express';
-import { appendFile, mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +13,8 @@ import {
   staticOptions,
 } from '../../server-ops/lib/site-server.mjs';
 import { retainedReleaseAssetMiddleware } from '../../server-ops/lib/site-release.mjs';
+import { ApplicationStoreError, createApplicationStore } from './application-store.mjs';
+import { createRequestLimiter } from './request-limiter.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -48,6 +49,18 @@ if (isProduction && SESSION_SECRET.length < MIN_SESSION_SECRET_LENGTH) {
     `SESSION_SECRET must be at least ${MIN_SESSION_SECRET_LENGTH} characters in production.`,
   );
 }
+
+const applicationStore = createApplicationStore({ filePath: applicationsPath });
+try {
+  const storage = await applicationStore.initialize();
+  console.log('[handmark] application storage ready', storage);
+} catch (error) {
+  // Keep the sales site available, but block intake with a clear error until storage is healthy.
+  console.error('[handmark] application storage needs attention', error);
+}
+applicationStore.startMaintenance();
+const requestLimiter = createRequestLimiter();
+requestLimiter.startSweep();
 
 const app = express();
 hardenApp(app);
@@ -131,13 +144,36 @@ app.use((error, req, res, next) => {
   res.status(status).type('text/plain').send(message);
 });
 
-app.listen(PORT, HOST, (error) => {
+const server = app.listen(PORT, HOST, (error) => {
   if (error) {
     console.error(`[handmark] failed to listen on http://${HOST}:${PORT}`, error);
     throw error;
   }
   console.log(`[handmark] listening on http://${HOST}:${PORT}`);
 });
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[handmark] shutting down (${signal})`);
+  requestLimiter.stopSweep();
+  const hardStop = setTimeout(() => process.exit(1), 10_000);
+  hardStop.unref();
+
+  const closed = new Promise((resolveClose) => {
+    server.close((error) => {
+      if (error) console.error('[handmark] HTTP shutdown failed', error);
+      resolveClose(error ? 1 : 0);
+    });
+  });
+  await applicationStore.stopMaintenance();
+  const exitCode = await closed;
+  clearTimeout(hardStop);
+  process.exit(exitCode);
+}
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 function loadLocalEnv(filePath) {
   if (!existsSync(filePath)) return;
@@ -223,24 +259,9 @@ function constantTimeEqual(left, right) {
   return crypto.timingSafeEqual(leftHash, rightHash);
 }
 
-const rateBuckets = new Map();
 function allowRequest(req, scope, maxRequests, windowMs) {
-  const now = Date.now();
   const key = `${scope}:${req.ip || req.socket.remoteAddress || 'unknown'}`;
-  const current = rateBuckets.get(key);
-  if (!current || current.resetAt <= now) {
-    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
-    cleanupRateBuckets(now);
-    return true;
-  }
-  current.count += 1;
-  return current.count <= maxRequests;
-}
-
-function cleanupRateBuckets(now) {
-  for (const [key, bucket] of rateBuckets) {
-    if (bucket.resetAt <= now) rateBuckets.delete(key);
-  }
+  return requestLimiter.allow(key, maxRequests, windowMs);
 }
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -313,7 +334,7 @@ async function handleApplication(req, res) {
       paymentPreference,
     };
 
-    await appendApplication(application);
+    await applicationStore.append(application);
     res.status(201).json({
       ok: true,
       id: application.id,
@@ -324,12 +345,16 @@ async function handleApplication(req, res) {
       res.status(400).json({ ok: false, message: error.message });
       return;
     }
+    if (error instanceof ApplicationStoreError) {
+      console.error('[handmark] application storage rejected write', {
+        code: error.code,
+        message: error.message,
+        cause: error.cause,
+      });
+      res.status(error.status).json({ ok: false, code: error.code, message: error.publicMessage });
+      return;
+    }
     console.error('[handmark] application save failed', error);
     res.status(500).json({ ok: false, message: 'Could not save the application. Try again.' });
   }
-}
-
-async function appendApplication(application) {
-  await mkdir(dataDir, { recursive: true });
-  await appendFile(applicationsPath, `${JSON.stringify(application)}\n`);
 }

@@ -74,6 +74,15 @@ Important constraints:
 - Secrets belong in `.env`, never in committed files.
 - `.env.example` documents expected environment keys.
 - `data/applications.jsonl` is generated local intake data. Do not commit it.
+- Application storage is intentionally bounded: records expire at 90 days, and the file has hard
+  ceilings of 100 MiB and 10,000 records. `server/application-store.mjs` owns serialized appends,
+  atomic retention compaction, drain-aware shutdown, 24-hour stale compaction-temp cleanup, and
+  clear capacity/integrity failures. The main store must remain a single-link regular file. Temp
+  cleanup matches only the store's exact generated filename shape and never follows symlinks. Do not
+  bypass the store with direct file appends.
+- Login/application abuse tracking is owned by `server/request-limiter.mjs`. Its expiring
+  client/scope buckets cap at 10,000 and fail closed when every live slot is occupied; do not add
+  an uncapped request-state map in `server/index.mjs`.
 - `test-results/` is generated. Do not commit it.
 - Do not collect raw card details in this app. Add Stripe Checkout or another payment provider before real billing.
 - The intended payment model is a `$99` review fee first, then `$79/mo` only after approval.

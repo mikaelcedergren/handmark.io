@@ -8,6 +8,12 @@ Handmark is a protected early review and subscription product for verifying work
 - Angular sales site served by the standard local Express server.
 - Pricing and human-review application flow.
 - Local application storage in `data/applications.jsonl`.
+- Bounded application storage: records expire after at most 90 days, with hard ceilings of 100 MiB
+  and 10,000 records. Retention rewrites are atomic; a full or unhealthy store rejects intake
+  clearly without overwriting the existing file. Shutdown drains in-flight maintenance, and exact
+  compaction temp files left by an interrupted process are removed once older than 24 hours.
+- Bounded abuse tracking: login/application rate-limit state expires on schedule, caps at 10,000
+  client/scope buckets, and fails closed for new clients at capacity.
 - Runtime secrets are read from `.env`; launchd only stores non-secret process settings.
 
 ## Review and pricing model
