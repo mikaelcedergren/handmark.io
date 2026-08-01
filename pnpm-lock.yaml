@@ -34,7 +34,7 @@ importers:
         version: 22.0.8(6c5876c8022b56f6168786f1fb21b877)
       '@mikaelcedergren/cx-framework':
         specifier: github:mikaelcedergren/cx-framework#main
-        version: https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/e2bfe89cf91e1ed7467d33ef6a2e8ccb6d7b3d59(a8930ef807d2c024fe46d1742846dc9b)
+        version: https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/54a2b8ea41248414a946275adc27c4ee3039e379(a8930ef807d2c024fe46d1742846dc9b)
       compression:
         specifier: ^1.8.1
         version: 1.8.1
@@ -351,6 +351,11 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
+  '@babel/parser@7.29.8':
+    resolution: {integrity: sha512-E8lTAYNB1KW+FH+VGJuZM1ioAx2E6oVlvQFRrf5P8ZZmsiJXYAD9vTFV7yyEURNzgh1dFqMZuO6tUwcARbqFCA==}
+    engines: {node: '>=6.0.0'}
+    hasBin: true
+
   '@babel/template@7.29.7':
     resolution: {integrity: sha512-puq+Gf35oI24FeN11LkoUQFqv9uwNeWpxXZi/Ji3rRIoKAzKnxRaZ+Gkj0vKS9ZCiTESfng1N9LyOyXvo+m+Gg==}
     engines: {node: '>=6.9.0'}
@@ -361,6 +366,10 @@ packages:
 
   '@babel/types@7.29.7':
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
+    engines: {node: '>=6.9.0'}
+
+  '@babel/types@7.29.8':
+    resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
   '@esbuild/aix-ppc64@0.28.1':
@@ -744,9 +753,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@mikaelcedergren/cx-framework@https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/e2bfe89cf91e1ed7467d33ef6a2e8ccb6d7b3d59':
-    resolution: {tarball: https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/e2bfe89cf91e1ed7467d33ef6a2e8ccb6d7b3d59}
-    version: 0.7.2
+  '@mikaelcedergren/cx-framework@https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/54a2b8ea41248414a946275adc27c4ee3039e379':
+    resolution: {tarball: https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/54a2b8ea41248414a946275adc27c4ee3039e379}
+    version: 0.7.4
     peerDependencies:
       '@angular/cdk': ^22.0.0
       '@angular/common': ^22.0.0
@@ -2826,6 +2835,11 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.7
 
+  '@babel/parser@7.29.8':
+    dependencies:
+      '@babel/types': 7.29.8
+    optional: true
+
   '@babel/template@7.29.7':
     dependencies:
       '@babel/code-frame': 7.29.7
@@ -2848,6 +2862,12 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@babel/types@7.29.8':
+    dependencies:
+      '@babel/helper-string-parser': 7.29.7
+      '@babel/helper-validator-identifier': 7.29.7
+    optional: true
 
   '@esbuild/aix-ppc64@0.28.1':
     optional: true
@@ -3123,7 +3143,7 @@ snapshots:
   '@lmdb/lmdb-win32-x64@3.5.4':
     optional: true
 
-  '@mikaelcedergren/cx-framework@https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/e2bfe89cf91e1ed7467d33ef6a2e8ccb6d7b3d59(a8930ef807d2c024fe46d1742846dc9b)':
+  '@mikaelcedergren/cx-framework@https://codeload.github.com/mikaelcedergren/cx-framework/tar.gz/54a2b8ea41248414a946275adc27c4ee3039e379(a8930ef807d2c024fe46d1742846dc9b)':
     dependencies:
       '@angular/cdk': 22.0.6(@angular/common@22.0.8(@angular/core@22.0.8(@angular/compiler@22.0.8)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.0.8(@angular/compiler@22.0.8)(rxjs@7.8.2)(zone.js@0.16.2))(@angular/platform-browser@22.0.8(@angular/common@22.0.8(@angular/core@22.0.8(@angular/compiler@22.0.8)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.0.8(@angular/compiler@22.0.8)(rxjs@7.8.2)(zone.js@0.16.2)))(rxjs@7.8.2)
       '@angular/common': 22.0.8(@angular/core@22.0.8(@angular/compiler@22.0.8)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2)
@@ -4074,7 +4094,7 @@ snapshots:
   istanbul-lib-instrument@6.0.3:
     dependencies:
       '@babel/core': 7.29.7
-      '@babel/parser': 7.29.7
+      '@babel/parser': 7.29.8
       '@istanbuljs/schema': 0.1.6
       istanbul-lib-coverage: 3.2.2
       semver: 7.8.5

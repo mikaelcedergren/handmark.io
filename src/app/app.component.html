@@ -375,7 +375,7 @@
                 [validation]="errors.website"
                 (valueChange)="setField('website', $event)"
               />
-              <cx-textarea
+              <cx-text-area
                 label="What do you make?"
                 [minLines]="6"
                 hint="Describe the work, the process, and where human authorship sits."
@@ -383,7 +383,7 @@
                 [validation]="errors.craftSummary"
                 (valueChange)="setField('craftSummary', $event)"
               />
-              <cx-textarea
+              <cx-text-area
                 label="Proof links"
                 [minLines]="4"
                 hint="Portfolio, process notes, studio page, references, or work-in-progress material."
