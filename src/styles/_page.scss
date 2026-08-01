@@ -15,9 +15,9 @@ $mobile-max: bp.$mobile - 1px;
 // Semantic element defaults
 //
 // The framework base reset styles the body, links, and focus ring but leaves
-// heading/paragraph type to the app. These map the document outline onto the
-// framework type scale so bare h1/h2/h3/p read correctly; templates promote or
-// mute individual blocks with cx-text-* / cx-font-* utilities.
+// heading/paragraph type to the app. These provide shared element rhythm and
+// colour; templates assign h1/h2 size and emphasis explicitly with cx-text-* /
+// cx-font-* utilities, while h3 keeps the section-heading default below.
 // ---------------------------------------------------------------------------
 
 img {
@@ -36,9 +36,7 @@ h1,
 h2 {
   margin-bottom: var(--space-sm);
   color: var(--ink);
-  font-size: var(--font-size-title-1);
   font-weight: var(--font-weight-bold);
-  line-height: var(--line-height-heading);
 }
 
 h3 {

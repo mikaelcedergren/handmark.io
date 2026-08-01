@@ -88,6 +88,8 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
     const firstSection = document.querySelector('.section');
     const conversionStrip = document.querySelector('.conversion-strip');
     const formEl = document.querySelector('.application-form');
+    const heroTitle = document.querySelector('.hero h1');
+    const heroTitleStyles = getComputedStyle(heroTitle);
     const styles = (el) => {
       const computed = getComputedStyle(el);
       return {
@@ -116,6 +118,8 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
       membershipSurface: document.querySelector('.membership-card')?.tagName,
       applicationSurface: formEl.querySelector('.application-card')?.tagName,
       buyerSurfaceCount: document.querySelectorAll('.buyer-card > cx-card').length,
+      heroTitleSize: Number.parseFloat(heroTitleStyles.fontSize),
+      heroTitleLineHeight: Number.parseFloat(heroTitleStyles.lineHeight),
     };
   });
   expect(seo.title).toContain('human-made work verification');
@@ -145,6 +149,8 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   expect(seo.membershipSurface).toBe('CX-CARD');
   expect(seo.applicationSurface).toBe('CX-CARD');
   expect(seo.buyerSurfaceCount).toBe(2);
+  expect(seo.heroTitleSize).toBeCloseTo(72, 1);
+  expect(seo.heroTitleLineHeight / seo.heroTitleSize).toBeCloseTo(1.05, 2);
 
   await page.screenshot({
     path: '/private/tmp/handmark-desktop.png',
@@ -248,9 +254,15 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   const mobileMetrics = await page.evaluate(() => ({
     overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
     hasMembership: document.body.textContent.includes('Handmark Verification'),
+    heroTitleSize: Number.parseFloat(getComputedStyle(document.querySelector('.hero h1')).fontSize),
+    heroTitleLineHeight: Number.parseFloat(
+      getComputedStyle(document.querySelector('.hero h1')).lineHeight,
+    ),
   }));
   expect(mobileMetrics.overflow).toBe(false);
   expect(mobileMetrics.hasMembership).toBe(true);
+  expect(mobileMetrics.heroTitleSize).toBeCloseTo(40, 1);
+  expect(mobileMetrics.heroTitleLineHeight / mobileMetrics.heroTitleSize).toBeCloseTo(1.05, 2);
 
   await page.screenshot({
     path: '/private/tmp/handmark-mobile.png',
