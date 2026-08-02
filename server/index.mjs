@@ -206,7 +206,7 @@ function sendBuiltFile(req, res, fileName) {
     return;
   }
   if (fileName.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
-  res.sendFile(filePath);
+  browserServing.sendFileForRequest(req, res, fileName);
 }
 
 function requireAuth(req, res, next) {
