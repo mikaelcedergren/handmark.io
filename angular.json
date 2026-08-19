@@ -35,6 +35,11 @@
                 "glob": "**/*",
                 "input": "public/assets",
                 "output": "assets"
+              },
+              {
+                "glob": "*.woff2",
+                "input": "node_modules/@mikaelcedergren/cx-framework/fonts",
+                "output": "assets/fonts"
               }
             ],
             "styles": [
