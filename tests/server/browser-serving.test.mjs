@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import { createBrowserServing } from '../../../server-ops/lib/site-server.mjs';
 import {
+  BUILD_INFO_FILENAME,
   BUILD_ID_PLACEHOLDER,
   publishSiteRelease,
   releasePaths,
@@ -48,6 +49,17 @@ test('named files and static lookup share one release while the active link swit
   assert.equal(fs.readFileSync(path.join(secondSnapshot, 'release.txt'), 'utf8'), 'second');
   assert.equal(staticRoots[1], secondSnapshot);
   assert.notEqual(secondSnapshot, firstSnapshot);
+});
+
+test('build identity remains public and cache-safe before the password gate', () => {
+  const source = fs.readFileSync(new URL('../../server/index.mjs', import.meta.url), 'utf8');
+  const buildInfoRoute = source.indexOf('app.get(`/${BUILD_INFO_FILENAME}`');
+  const authGate = source.indexOf('app.use(requireAuth)');
+
+  assert.notEqual(buildInfoRoute, -1);
+  assert.notEqual(authGate, -1);
+  assert.ok(buildInfoRoute < authGate);
+  assert.match(source, /fileName\.endsWith\('\.html'\) \|\| fileName === BUILD_INFO_FILENAME/);
 });
 
 function publishRelease(repoRoot, releaseId, marker) {

@@ -12,7 +12,10 @@ import {
   securityHeaders,
   staticOptions,
 } from '../../server-ops/lib/site-server.mjs';
-import { retainedReleaseAssetMiddleware } from '../../server-ops/lib/site-release.mjs';
+import {
+  BUILD_INFO_FILENAME,
+  retainedReleaseAssetMiddleware,
+} from '../../server-ops/lib/site-release.mjs';
 import { ApplicationStoreError, createApplicationStore } from './application-store.mjs';
 import { createRequestLimiter } from './request-limiter.mjs';
 
@@ -76,6 +79,7 @@ app.get('/styles.css', (req, res) => sendBuiltFile(req, res, 'styles.css'));
 app.get('/robots.txt', (req, res) => sendBuiltFile(req, res, 'robots.txt'));
 app.get('/sitemap.xml', (req, res) => sendBuiltFile(req, res, 'sitemap.xml'));
 app.get('/site.webmanifest', (req, res) => sendBuiltFile(req, res, 'site.webmanifest'));
+app.get(`/${BUILD_INFO_FILENAME}`, (req, res) => sendBuiltFile(req, res, BUILD_INFO_FILENAME));
 app.use('/assets', browserServing.staticMiddleware({ immutable: true, maxAge: '1y' }, 'assets'));
 
 app.post('/login', express.urlencoded({ extended: false, limit: '16kb' }), (req, res) => {
@@ -205,7 +209,9 @@ function sendBuiltFile(req, res, fileName) {
     res.status(503).type('text/plain').send('Build missing. Run pnpm build first.');
     return;
   }
-  if (fileName.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+  if (fileName.endsWith('.html') || fileName === BUILD_INFO_FILENAME) {
+    res.setHeader('Cache-Control', 'no-cache');
+  }
   browserServing.sendFileForRequest(req, res, fileName);
 }
 
