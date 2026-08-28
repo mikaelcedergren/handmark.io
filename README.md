@@ -25,16 +25,19 @@ The permanent family architecture is owned by
 ## Operational status
 
 The target source architecture is implemented but has **not been selected in production**. The
-live `com.handmark.server` daemon still runs the legacy `server/index.mjs` process and writes
-`data/applications.jsonl`. The operational JSONL remains authoritative until the separately
-authorised data import, backup/restore proof, server-release selection, and daemon restart all
-complete.
+authorised 2026-08-28 maintenance boundary already unloaded `com.handmark.server`, removed its
+conventional installed plist, proved launchctl status `113`, and proved port `3000` closed. It did
+not inspect or import application data, create the target database, change backup authority, or
+select a release. The legacy JSONL or its proved empty absence remains authoritative until the
+separately authorised import, backup/restore proof, server-release selection, and first bootstrap
+all complete.
 
 Do not inspect live application data, create the production SQLite target, remove the legacy files,
 change launchd, or claim the migration ran as part of ordinary source work. The exact future
 procedure is [`docs/application-storage-cutover.md`](docs/application-storage-cutover.md).
-The existing `launchd/com.handmark.server.plist` remains the rollback-owned legacy definition;
-`launchd/com.handmark.server.target.plist` is the separately validated immutable-server candidate.
+The tracked `launchd/com.handmark.server.plist` is a historical legacy recovery input, not a
+byte-exact copy of the deleted installed definition;
+`launchd/com.handmark.server.target.plist` is the separately validated immutable-server target.
 `bin/install-server-daemon --check` is non-mutating, while `--apply` can install only the target
 definition after the stopped-service, selected-release, private-file, and database preconditions
 pass. Run the applied form directly as `cortex`, never through `sudo`. The write is delegated to the
@@ -76,11 +79,12 @@ pnpm check
 
 `pnpm start` is the compiled production entrypoint and expects a completed build and an appropriate
 release/runtime environment. On the Mac mini, use it only through the authorised server-release
-flow because the live service already owns port `3000`. In ordinary production, its only private
-runtime file is an owned mode-`0600` `.env.web` containing `HANDMARK_PASSWORD` and `SESSION_SECRET`,
-documented without secrets in [`.env.web.example`](.env.web.example). The existing `.env.example`
-belongs solely to the still-selected legacy MJS daemon; the compiled target never reads legacy
-`.env` as a fallback.
+flow; port `3000` remains reserved for Handmark even while its backend is offline. In ordinary
+production, its only private runtime file is an owned mode-`0600` `.env.web` containing
+`HANDMARK_PASSWORD` and `SESSION_SECRET`, documented without secrets in
+[`.env.web.example`](.env.web.example). The existing `.env.example` and preserved operational
+`.env` belong solely to the historical legacy recovery input; the compiled target never reads
+legacy `.env` as a fallback.
 
 ## Build and verify
 
@@ -96,7 +100,7 @@ port/data paths.
 
 ## Application import and cutover
 
-The compiled importer entrypoint is built and invoked explicitly:
+The compiled importer entrypoint can be built and invoked explicitly for synthetic local work:
 
 ```bash
 corepack pnpm build:server
@@ -113,7 +117,9 @@ JSONL uses the ordinary JSONL form because present-file and absent-file authorit
 not interchangeable. The importer accepts only the canonical `applications.jsonl` path beside the
 target database, so another absent filename cannot be sealed as legacy authority.
 
-Do not point that command at operational data outside the authorised, stopped-daemon procedure.
+Do not point that mutable-checkout command at operational data. The authorised stopped-daemon
+procedure authenticates and invokes the importer and verifier from one exact sealed inactive
+server candidate; it never uses mutable `server/dist` as migration authority.
 Ordinary production always requires an existing selected database with the sealed legacy import
 receipt and matching authority kind. JSONL authority requires `applications.jsonl` to remain
 present and match its receipt's exact byte count and SHA-256; deleting it fails startup.
@@ -133,12 +139,26 @@ Any failed proof exits before intake.
 The importer, backup/restore, activation, verification, and rollback sequence is owned only by
 [`docs/application-storage-cutover.md`](docs/application-storage-cutover.md).
 
+That procedure captures the importer's private single-line receipt, then uses the compiled
+read-only verifier on both the published target and the first extracted SQLite backup. Operational
+proof always runs through the authenticated inactive-candidate runner with the exact commands in
+the cutover document; direct mutable-checkout `server/dist` execution is only a synthetic local
+development interface and is never migration evidence.
+
+The verifier reads no JSONL source and prints no application content. It reproduces only the sealed
+receipt after proving the exact schema and migration ledger, SQLite integrity and foreign keys,
+sealed authority, bounded canonical rows, sequence, projections, and hashes without creating
+sidecars or changing the database. It rejects case-insensitive sidecar names and bounds every
+directory inventory by both entry count and encoded filename bytes. It is a one-time
+pre-activation proof, not a runtime database opener.
+
 ## Domain, hosting, and releases
 
-Handmark is live at `handmark.io` and `www.handmark.io`; the repo-specific target, daemon label, and
-active nginx file are recorded in [`DOMAIN_SETUP.md`](DOMAIN_SETUP.md). Shared network, release,
-restart, health, and rollback rules stay in [`GO-LIVE.md`](../GO-LIVE.md) and
-[`SERVER-STANDARD.md`](../SERVER-STANDARD.md).
+Handmark's HTTPS hostnames and nginx route remain configured at `handmark.io` and
+`www.handmark.io`, while the backend is intentionally offline at the current migration boundary.
+The repo-specific target, daemon label, and active nginx file are recorded in
+[`DOMAIN_SETUP.md`](DOMAIN_SETUP.md). Shared network, release, restart, health, and rollback rules
+stay in [`GO-LIVE.md`](../GO-LIVE.md) and [`SERVER-STANDARD.md`](../SERVER-STANDARD.md).
 
 Browser assets for a change proved browser-only use the registered atomic release command:
 

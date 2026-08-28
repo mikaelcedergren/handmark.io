@@ -57,7 +57,8 @@ pnpm dev
 
 That command uses the reserved development port `4230` and `.run/dev/data`; it must not read or
 write production `data/`. `pnpm start` is the canonical compiled entrypoint after `pnpm build`, but
-do not start it casually on the Mac mini because production already owns port `3000`.
+do not start it casually on the Mac mini because `3000` remains Handmark's reserved production
+port even while its service is offline for migration.
 
 Browser publication for a change proved browser-only remains:
 
@@ -73,19 +74,21 @@ contracts are owned by
 
 ### Operational selection during migration
 
-The source target above is implemented but **not selected in production yet**. The live
-`com.handmark.server` daemon still launches `node server/index.mjs` and writes
-`data/applications.jsonl`. It also still loads the legacy `.env` itself. Those legacy files and the
-tracked launchd template remain live-referenced rollback/cutover inputs; do not delete, repurpose,
-or describe them as the new architecture until the separately authorised storage and server-release
-cutover has completed. `launchd/com.handmark.server.target.plist` is the separately validated
-immutable-server candidate; `bin/install-server-daemon --check` validates both definitions without
-installing, unloading, loading, or restarting anything. `--apply` fails closed until the legacy
-role is unloaded, the immutable server release is selected, and the private target files exist.
-Run it directly as `cortex`, never through `sudo`. It delegates the only definition write to the
-shared server-ops LaunchDaemon installer only after shared server-release status authenticates the
-selected closure, installs only the definition, and still never loads or restarts the service. The
-compiled target never reads legacy `.env` as a fallback.
+The source target above is implemented but **not selected in production yet**. The authorised
+2026-08-28 maintenance boundary already unloaded `com.handmark.server`, removed its conventional
+installed plist, proved launchctl status `113`, and proved port `3000` closed. No application data
+was inspected or imported, no target database was created, and no release was selected. The last
+runtime used `node server/index.mjs`, `data/applications.jsonl`, and legacy `.env`; those files and
+the tracked historical launchd template remain recovery/cutover inputs, not live service state.
+The deleted installed plist was not captured byte-for-byte, so the tracked template must never be
+described as an exact installed-file rollback. `launchd/com.handmark.server.target.plist` is the
+separately validated immutable-server target; `bin/install-server-daemon --check` validates both
+tracked definitions without installing, unloading, loading, or restarting anything. `--apply`
+fails closed until the role remains unloaded, the immutable server release is selected, and the
+private target files exist. Run it directly as `cortex`, never through `sudo`. It delegates the
+only definition write to the shared server-ops LaunchDaemon installer after shared server-release
+status authenticates the selected closure, installs only the definition, and still never loads or
+restarts the service. The compiled target never reads legacy `.env` as a fallback.
 
 Source work must not inspect operational applications, create `data/handmark.sqlite`, alter the
 backup registry, select a server release, or restart the daemon. Keep `HOST=127.0.0.1`; public
@@ -93,11 +96,12 @@ traffic reaches nginx first.
 
 ## Hosting and domain reality
 
-Handmark is live on HTTPS at `handmark.io` via the shared static-IP nginx path. The path itself
-(static IP, router forwarding, nginx as the only public gateway, the nginx include model) is owned
-by the root docs — see the root `AGENTS.md` ("Static IP state") and `GO-LIVE.md`. What is
-handmark-specific: daemon `com.handmark.server` serves the app locally at `127.0.0.1:3000`, and
-repo routing values are in `DOMAIN_SETUP.md`. Do not interrupt existing servers.
+Handmark's HTTPS hostnames and nginx route remain configured on the shared static-IP path, but the
+backend is intentionally offline at the current migration boundary. The path itself (static IP,
+router forwarding, nginx as the only public gateway, the nginx include model) is owned by the root
+docs — see the root `AGENTS.md` ("Static IP state") and `GO-LIVE.md`. Once selected and bootstrapped,
+daemon `com.handmark.server` serves the app locally at `127.0.0.1:3000`; repo routing values are in
+`DOMAIN_SETUP.md`. Do not interrupt existing servers.
 
 Important constraints:
 
@@ -112,8 +116,8 @@ Important constraints:
 - Target server secrets belong in `.env.web`, never in committed files. The file may contain only
   `HANDMARK_PASSWORD` and `SESSION_SECRET` and must be one owned mode-`0600` regular file.
 - `.env.web.example` documents the compiled target's private keys. The existing `.env.example` and
-  operational `.env` belong only to the still-selected legacy daemon and its rollback window; do
-  not make them target-server fallbacks.
+  preserved operational `.env` belong only to the historical legacy recovery input; the legacy
+  service is currently absent. Do not make either file a target-server fallback.
 - `data/applications.jsonl` and `data/handmark.sqlite*` are operational application data. Never
   inspect, copy into fixtures, or commit them.
 - Target intake is SQLite with explicit migrations, foreign keys, WAL, a busy timeout, monotonic
@@ -161,7 +165,20 @@ Important constraints:
   unreachable from web/worker startup. The command also requires filesystem `fsync`, which Node
   disables under its permission model. Use
   [`docs/application-storage-cutover.md`](docs/application-storage-cutover.md); never improvise an
-  online migration.
+  online migration. Operational import and replay execute only through the shared authenticated
+  offline candidate-tool runner against one source-identical inactive sealed release; never invoke
+  mutable-checkout `server/dist` for the cutover.
+- The compiled `verify-application-import` command is the only operator-facing read-only proof for
+  the imported target and the database extracted from its first required `sqlite-online` backup.
+  Given an explicit database and the exact private importer-receipt file, it opens only a canonical
+  mode-`0600` single-link database through immutable SQLite, verifies the exact schema, migration
+  ledger, integrity, foreign keys, sealed receipt/authority, canonical rows, sequence, projections,
+  and hashes, and emits only the matching receipt. It never reads the JSONL source or exposes
+  application content; database records remain internal to the bounded proof. It creates no
+  sidecars, rejects case-insensitive sidecar names, bounds directory inventories by entry and name
+  bytes, mutates no database, and never becomes a runtime opening path. Operational target and
+  restore proofs use that same authenticated candidate-tool runner rather than direct artifact
+  execution.
 - Gate and intake abuse limits are framework-owned and bounded. Do not introduce a product-local
   request-state map.
 - `test-results/` is generated. Do not commit it.
@@ -225,19 +242,20 @@ behaviour.
 - `server/src/gate-presentation.ts` — bounded branded presentation for the framework-owned gate.
 - `server/src/application-*.ts` — validation, service, SQLite repository/schema, importer, and
   cutover interlock.
-- `server/index.mjs`, `server/application-store.mjs`, and `server/request-limiter.mjs` — intentional
-  legacy files still used by the live daemon until the authorised cutover; not the target source.
-- `launchd/com.handmark.server.plist` — rollback-owned definition for the still-selected legacy
-  service; never repurpose it in place.
+- `server/index.mjs`, `server/application-store.mjs`, and `server/request-limiter.mjs` — historical
+  legacy recovery inputs from the last runtime; not the target source or a currently running
+  service.
+- `launchd/com.handmark.server.plist` — tracked historical legacy template and reviewed recovery
+  input; it is not a byte-exact copy of the deleted installed definition.
 - `launchd/com.handmark.server.target.plist` and `bin/install-server-daemon` — fail-closed target
   definition and definition-only installer for the authorised immutable-server cutover.
 - `src/app/app.component.html` — protected sales page template.
 - `src/app/app.component.ts` — menu and application submission behavior.
-- `public/login.html` — intentional legacy gate page for the still-live MJS server; target gate HTML
-  comes from `server/src/gate-presentation.ts` through cx-framework.
+- `public/login.html` — historical legacy gate page; target gate HTML comes from
+  `server/src/gate-presentation.ts` through cx-framework.
 - `src/styles/site.scss` — global stylesheet entry; pulls in cx-framework tokens, base, fonts, and
   utilities, then the page composition. Angular compiles it into the stable `/styles.css` used by
-  the framework-rendered gate and protected app; the legacy static gate also uses it until cutover.
+  the framework-rendered gate and protected app; the historical legacy static gate also uses it.
 - `src/styles/_page.scss` — Handmark page/login composition; arranges framework tokens and utilities only, defines no local design values.
 - `angular.json` — copies the package-owned framework fonts to same-origin `/assets/fonts/` and the
   Handmark product assets to `/assets/`.

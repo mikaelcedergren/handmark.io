@@ -15,6 +15,7 @@ import {
   APPLICATION_RECORD_FIELDS,
   applicationRecordHash,
   canonicalApplicationRecordBytes,
+  orderedApplicationRecordHash,
   parseHistoricalApplicationRecord,
   sqliteTextProjection,
   type ApplicationRecord,
@@ -487,17 +488,146 @@ export function verifyImportedApplicationDatabase(
   receipt: ApplicationImportReceipt,
   records: readonly ApplicationRecord[],
 ): void {
+  verifyApplicationImportFoundation(database, receipt);
+  verifyApplicationRows(database, records);
+}
+
+/**
+ * One-time read-only cutover proof for a database whose original JSONL records are intentionally
+ * unavailable to the verifier. Reconstruct the semantic records only from their canonical private
+ * database blobs, then prove every projection, sequence, row hash, and ordered aggregate against
+ * the independently captured sealed receipt.
+ */
+export function verifyStoredImportedApplicationDatabase(
+  database: SyncSqliteDatabase,
+  receipt: ApplicationImportReceipt,
+  {
+    maxRecordBytes,
+    maxRecords,
+    maxSourceBytes,
+  }: Readonly<{
+    readonly maxRecordBytes: number;
+    readonly maxRecords: number;
+    readonly maxSourceBytes: number;
+  }>,
+): ApplicationImportReceipt {
+  if (
+    !Number.isSafeInteger(maxRecordBytes) ||
+    maxRecordBytes < 1 ||
+    !Number.isSafeInteger(maxRecords) ||
+    maxRecords < 0 ||
+    !Number.isSafeInteger(maxSourceBytes) ||
+    maxSourceBytes < 0
+  ) {
+    throw new Error('Handmark imported-record verification bounds are invalid.');
+  }
+  assertApplicationImportReceipt(receipt);
+  if (receipt.recordCount > maxRecords) {
+    throw new Error('Handmark sealed receipt exceeds the imported-record verification bound.');
+  }
+  if (receipt.sourceBytes > maxSourceBytes) {
+    throw new Error('Handmark sealed receipt exceeds the imported-source verification bound.');
+  }
+
+  const storedReceipt = verifyApplicationImportFoundation(database, receipt);
+  const rowLimit = receipt.recordCount + 1;
+  const metadata = database.all<CanonicalRecordSizeRow>(
+    `SELECT intake_sequence, length(record_json) AS record_bytes
+     FROM ${APPLICATIONS_TABLE}
+     ORDER BY intake_sequence
+     LIMIT ?`,
+    [rowLimit],
+  );
+  if (metadata.length !== receipt.recordCount) {
+    throw new Error('Handmark application rows do not match the sealed cutover receipt.');
+  }
+  const recordByteCounts = metadata.map((row, index) => {
+    const recordBytes = safeInteger(row.record_bytes, 'Application canonical record bytes');
+    if (
+      safeInteger(row.intake_sequence, 'Application intake sequence') !== index + 1 ||
+      recordBytes < 1 ||
+      recordBytes > maxRecordBytes
+    ) {
+      throw new Error('Handmark imported application row metadata is outside its sealed bounds.');
+    }
+    return recordBytes;
+  });
+  const aggregateRecordBytes = recordByteCounts.reduce((total, recordBytes) => {
+    const next = total + recordBytes;
+    if (!Number.isSafeInteger(next)) {
+      throw new Error('Handmark imported canonical record aggregate is outside its sealed bound.');
+    }
+    return next;
+  }, 0);
+  if (receipt.authorityKind === 'legacy_jsonl_v1' && aggregateRecordBytes > receipt.sourceBytes) {
+    throw new Error('Handmark imported canonical record aggregate exceeds its sealed source.');
+  }
+
+  const canonicalRows = database.all<CanonicalRecordRow>(
+    `SELECT intake_sequence, record_json
+     FROM ${APPLICATIONS_TABLE}
+     ORDER BY intake_sequence
+     LIMIT ?`,
+    [rowLimit],
+  );
+  if (canonicalRows.length !== receipt.recordCount) {
+    throw new Error('Handmark canonical application rows changed during cutover verification.');
+  }
+  const records = canonicalRows.map((row, index) => {
+    const expectedSequence = index + 1;
+    if (
+      safeInteger(row.intake_sequence, 'Application intake sequence') !== expectedSequence ||
+      !(row.record_json instanceof Uint8Array) ||
+      row.record_json.byteLength !== recordByteCounts[index]
+    ) {
+      throw new Error(
+        `Handmark imported application row ${String(expectedSequence)} is not canonical.`,
+      );
+    }
+    try {
+      const bytes = Buffer.from(
+        row.record_json.buffer,
+        row.record_json.byteOffset,
+        row.record_json.byteLength,
+      );
+      const decoded = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+      return parseHistoricalApplicationRecord(decoded);
+    } catch {
+      throw new Error(
+        `Handmark imported application row ${String(expectedSequence)} has invalid canonical bytes.`,
+      );
+    }
+  });
+  if (orderedApplicationRecordHash(records) !== receipt.orderedRecordsSha256) {
+    throw new Error('Handmark imported application rows fail sealed aggregate parity.');
+  }
+  verifyApplicationRows(database, records);
+  return storedReceipt;
+}
+
+function verifyApplicationImportFoundation(
+  database: SyncSqliteDatabase,
+  receipt: ApplicationImportReceipt,
+): ApplicationImportReceipt {
   verifyApplicationSchema(database);
   verifySqliteIntegrity(database);
 
   const storedReceipt = readVerifiedLegacyApplicationImportReceipt(database);
   if (!storedReceipt) throw new Error('Handmark application import receipt is missing.');
   assertSameApplicationImportReceipt(storedReceipt, receipt);
+  return storedReceipt;
+}
 
+function verifyApplicationRows(
+  database: SyncSqliteDatabase,
+  records: readonly ApplicationRecord[],
+): void {
   const rows = database.all<ApplicationRow>(
     `SELECT ${APPLICATION_ROW_COLUMNS_SQL}
      FROM ${APPLICATIONS_TABLE}
-     ORDER BY intake_sequence`,
+     ORDER BY intake_sequence
+     LIMIT ?`,
+    [records.length + 1],
   );
   if (rows.length !== records.length) {
     throw new Error(
@@ -716,6 +846,16 @@ interface ApplicationRow extends SqliteRow {
 
 interface SequenceRow extends SqliteRow {
   readonly seq: number | bigint;
+}
+
+interface CanonicalRecordSizeRow extends SqliteRow {
+  readonly intake_sequence: number | bigint;
+  readonly record_bytes: number | bigint;
+}
+
+interface CanonicalRecordRow extends SqliteRow {
+  readonly intake_sequence: number | bigint;
+  readonly record_json: Uint8Array;
 }
 
 function applicationRecordSqlValues(record: ApplicationRecord): readonly SqliteValue[] {

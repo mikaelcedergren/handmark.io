@@ -15,7 +15,8 @@
     "build": "node -e \"require('node:fs').rmSync('dist', { force: true, recursive: true })\" && tsc -p tsconfig.build.json",
     "start": "cd .. && node server/dist/index.js",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
-    "import:applications": "cd .. && node server/dist/import-applications.js"
+    "import:applications": "cd .. && node server/dist/import-applications.js",
+    "verify:application-import": "cd .. && node server/dist/verify-application-import.js"
   },
   "dependencies": {
     "@mikaelcedergren/cx-framework": "github:mikaelcedergren/cx-framework#main",
