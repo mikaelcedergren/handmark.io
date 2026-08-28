@@ -540,16 +540,14 @@ A registry edit in the mutable checkout is not backup activation. Manually previ
 through the selected immutable system-job release, capturing both outputs without replacement:
 
 ```bash
-(umask 077; set -C; /opt/homebrew/bin/node \
-  /Users/cortex/Development/server-ops/bin/system-job-launcher.mjs \
+(umask 077; set -C; /Users/cortex/Development/server-ops/bin/system-job-launcher.mjs \
   --selected-backup-preview \
   >"$HANDMARK_SELECTED_BACKUP_PREVIEW")
 
 HANDMARK_SELECTED_BACKUP_IDENTITY='<exact-selectionIdentity-from-first-preview-line>'
 readonly HANDMARK_SELECTED_BACKUP_IDENTITY
 
-(umask 077; set -C; /opt/homebrew/bin/node \
-  /Users/cortex/Development/server-ops/bin/system-job-launcher.mjs \
+(umask 077; set -C; /Users/cortex/Development/server-ops/bin/system-job-launcher.mjs \
   --selected-backup-apply \
   --expected-selected-backup-identity "$HANDMARK_SELECTED_BACKUP_IDENTITY" \
   >"$HANDMARK_SELECTED_BACKUP_APPLY")
@@ -765,16 +763,14 @@ for HANDMARK_POST_BOOTSTRAP_PATH in \
   fi
 done
 
-(umask 077; set -C; /opt/homebrew/bin/node \
-  /Users/cortex/Development/server-ops/bin/system-job-launcher.mjs \
+(umask 077; set -C; /Users/cortex/Development/server-ops/bin/system-job-launcher.mjs \
   --selected-backup-preview \
   >"$HANDMARK_POST_BOOTSTRAP_BACKUP_PREVIEW")
 
 HANDMARK_POST_BOOTSTRAP_BACKUP_IDENTITY='<exact-selectionIdentity-from-first-preview-line>'
 readonly HANDMARK_POST_BOOTSTRAP_BACKUP_IDENTITY
 
-(umask 077; set -C; /opt/homebrew/bin/node \
-  /Users/cortex/Development/server-ops/bin/system-job-launcher.mjs \
+(umask 077; set -C; /Users/cortex/Development/server-ops/bin/system-job-launcher.mjs \
   --selected-backup-apply \
   --expected-selected-backup-identity "$HANDMARK_POST_BOOTSTRAP_BACKUP_IDENTITY" \
   >"$HANDMARK_POST_BOOTSTRAP_BACKUP_APPLY")
