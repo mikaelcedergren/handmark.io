@@ -1,8 +1,12 @@
 node_modules/
 .DS_Store
 .env
+.env.*
+!.env.example
+!.env.web.example
 data/*.json
 data/*.jsonl
+data/*.sqlite*
 !data/.gitkeep
 test-results/
 dist/

@@ -1,0 +1,21 @@
+packages:
+  - server
+
+injectWorkspacePackages: true
+enableGlobalVirtualStore: false
+autoInstallPeers: false
+dedupePeerDependents: false
+resolvePeersFromWorkspaceRoot: false
+syncInjectedDepsAfterScripts: []
+strictPeerDependencies: false
+strictDepBuilds: true
+strictStorePkgContentCheck: true
+verifyStoreIntegrity: true
+verifyDepsBeforeRun: error
+dangerouslyAllowAllBuilds: false
+
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
+  lmdb: true
+  msgpackr-extract: true

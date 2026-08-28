@@ -21,7 +21,7 @@ import { createRequestLimiter } from './request-limiter.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = resolve(__dirname, '..');
-loadLocalEnv(join(ROOT, '.env'));
+if (process.env.HANDMARK_LOAD_ENV_FILE !== 'false') loadLocalEnv(join(ROOT, '.env'));
 
 const browserServing = createBrowserServing({
   express,

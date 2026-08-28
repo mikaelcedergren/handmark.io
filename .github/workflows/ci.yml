@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+      - name: Bootstrap integrity-enforcing Corepack
+        run: npm install --global corepack@0.35.0
+      - name: Verify package manager
+        run: |
+          corepack enable
+          corepack install
+          test "$(corepack pnpm --version)" = "11.23.0"
+          test "$(corepack pnpm config get autoInstallPeers)" = "false"
+          test "$(corepack pnpm config get dedupePeerDependents)" = "false"
+          test "$(corepack pnpm config get resolvePeersFromWorkspaceRoot)" = "false"
+          test "$(corepack pnpm config get dangerouslyAllowAllBuilds)" = "false"
+          test "$(corepack pnpm config get strictDepBuilds)" = "true"
+          test "$(corepack pnpm config get strictStorePkgContentCheck)" = "true"
+          test "$(corepack pnpm config get verifyStoreIntegrity)" = "true"
+          test "$(corepack pnpm config get enableGlobalVirtualStore)" = "false"
+          test "$(corepack pnpm config get verifyDepsBeforeRun)" = "error"
+          test "$(corepack pnpm config get allowBuilds --json | tr -d '[:space:]')" = '{"@parcel/watcher":true,"esbuild":true,"lmdb":true,"msgpackr-extract":true}'
+      - name: Install
+        run: corepack pnpm install --frozen-lockfile
+      - name: Check
+        run: corepack pnpm check
+
+  e2e:
+    name: E2E
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+      - name: Bootstrap integrity-enforcing Corepack
+        run: npm install --global corepack@0.35.0
+      - name: Verify package manager
+        run: |
+          corepack enable
+          corepack install
+          test "$(corepack pnpm --version)" = "11.23.0"
+          test "$(corepack pnpm config get autoInstallPeers)" = "false"
+          test "$(corepack pnpm config get dedupePeerDependents)" = "false"
+          test "$(corepack pnpm config get resolvePeersFromWorkspaceRoot)" = "false"
+          test "$(corepack pnpm config get dangerouslyAllowAllBuilds)" = "false"
+          test "$(corepack pnpm config get strictDepBuilds)" = "true"
+          test "$(corepack pnpm config get strictStorePkgContentCheck)" = "true"
+          test "$(corepack pnpm config get verifyStoreIntegrity)" = "true"
+          test "$(corepack pnpm config get enableGlobalVirtualStore)" = "false"
+          test "$(corepack pnpm config get verifyDepsBeforeRun)" = "error"
+          test "$(corepack pnpm config get allowBuilds --json | tr -d '[:space:]')" = '{"@parcel/watcher":true,"esbuild":true,"lmdb":true,"msgpackr-extract":true}'
+      - name: Install
+        run: corepack pnpm install --frozen-lockfile
+      - name: Install Playwright browser
+        run: corepack pnpm exec playwright install --with-deps chromium
+      - name: E2E
+        run: corepack pnpm e2e

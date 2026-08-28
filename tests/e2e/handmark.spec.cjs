@@ -1,31 +1,104 @@
 const { test, expect } = require('@playwright/test');
+const { createHash } = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { DatabaseSync } = require('node:sqlite');
 
-const baseUrl = process.env.HANDMARK_BASE_URL || 'http://127.0.0.1:3000';
-const password = process.env.HANDMARK_TEST_PASSWORD || 'handmark-dev-password';
+const unexpectedExternalRequests = new WeakMap();
+
+const baseUrl = requiredEnvironment('HANDMARK_BASE_URL');
+const password = requiredEnvironment('HANDMARK_TEST_PASSWORD');
+const runtimeRoot = path.resolve(requiredEnvironment('HANDMARK_E2E_RUNTIME_ROOT'));
+const databasePath = path.resolve(requiredEnvironment('HANDMARK_E2E_DB_PATH'));
+const screenshotDir = path.resolve(requiredEnvironment('HANDMARK_E2E_SCREENSHOT_DIR'));
 const repoDataDir = path.resolve(__dirname, '..', '..', 'data');
-const configuredDataDir = process.env.HANDMARK_E2E_DATA_DIR;
-if (!configuredDataDir) {
-  throw new Error(
-    'HANDMARK_E2E_DATA_DIR is required; run this suite through its Playwright config.',
-  );
-}
-const dataDir = path.resolve(configuredDataDir);
+const dataDir = path.resolve(requiredEnvironment('HANDMARK_E2E_DATA_DIR'));
 const parsedBaseUrl = new URL(baseUrl);
+const ownedE2EPort = Number(parsedBaseUrl.port);
+const otherE2EOrigin = `http://127.0.0.1:${ownedE2EPort === 49_152 ? 49_153 : 49_152}`;
 if (
-  !['127.0.0.1', 'localhost', '::1'].includes(parsedBaseUrl.hostname) ||
+  parsedBaseUrl.origin !== baseUrl ||
+  parsedBaseUrl.hostname !== '127.0.0.1' ||
   parsedBaseUrl.port === '3000' ||
-  dataDir === repoDataDir
+  dataDir === repoDataDir ||
+  !isContainedPath(runtimeRoot, dataDir) ||
+  !isContainedPath(runtimeRoot, databasePath) ||
+  !isContainedPath(runtimeRoot, screenshotDir)
 ) {
-  throw new Error('Handmark E2E refuses the production endpoint or production data directory.');
+  throw new Error('Handmark E2E refuses non-owned, production, or non-loopback runtime state.');
 }
 
-test.afterAll(async () => {
-  await fs.rm(path.join(dataDir, 'applications.jsonl'), { force: true });
-  await fs.rmdir(dataDir).catch((error) => {
-    if (error.code !== 'ENOENT' && error.code !== 'ENOTEMPTY') throw error;
+test.beforeEach(async ({ context }) => {
+  const unexpected = [];
+  unexpectedExternalRequests.set(context, unexpected);
+  await context.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin === baseUrl) {
+      await route.continue();
+      return;
+    }
+
+    unexpected.push(`${request.method()} ${url.href}`);
+    await route.abort('blockedbyclient');
   });
+});
+
+test.afterEach(async ({ context }) => {
+  expect(unexpectedExternalRequests.get(context) ?? []).toEqual([]);
+});
+
+test('the browser records and blocks every origin except its exact E2E server', async ({
+  context,
+  page,
+}) => {
+  const blockedUrls = [
+    'http://127.0.0.1:3000/healthz',
+    `${otherE2EOrigin}/healthz`,
+    'https://cx-network-isolation.invalid/probe',
+  ];
+  for (const blockedUrl of blockedUrls) {
+    const failedRequest = page.waitForEvent(
+      'requestfailed',
+      (request) => request.url() === blockedUrl,
+    );
+    await page.goto(blockedUrl).catch(() => undefined);
+    expect((await failedRequest).failure()?.errorText).toBe('net::ERR_BLOCKED_BY_CLIENT');
+  }
+  const recorded = unexpectedExternalRequests.get(context);
+  expect(recorded).toEqual(blockedUrls.map((url) => `GET ${url}`));
+  recorded?.splice(0);
+});
+
+test('browser launch transport sends production through the owned proxy', async ({
+  context,
+  page,
+}) => {
+  await context.unroute('**/*');
+  const response = await page.goto('http://127.0.0.1:3000/cx-e2e-launch-proxy-proof');
+  expect(response?.status()).toBe(403);
+  expect(await response?.text()).toContain('E2E proxy denied this origin.');
+});
+
+test('API and test-process transports cannot reach another origin', async ({ request }) => {
+  for (const url of [
+    'http://127.0.0.1:3000/healthz',
+    `${otherE2EOrigin}/healthz`,
+    'http://cx-network-isolation.invalid/probe',
+  ]) {
+    const response = await request.get(url, { maxRedirects: 0 });
+    expect(response.status()).toBe(403);
+  }
+  const blockedHttpsUrl = 'https://cx-network-isolation.invalid/probe';
+  const blockedHttpsResponse = await request.get(blockedHttpsUrl, {
+    failOnStatusCode: false,
+    maxRedirects: 0,
+  });
+  expect(blockedHttpsResponse.url()).toBe(blockedHttpsUrl);
+  expect(blockedHttpsResponse.status()).toBe(403);
+  await expect(fetch('http://127.0.0.1:3000/healthz')).rejects.toThrow(
+    'E2E network isolation blocked',
+  );
 });
 
 test('Handmark night-mode membership flow', async ({ page, request }) => {
@@ -33,11 +106,28 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
+  await fs.mkdir(screenshotDir, { recursive: true });
 
   await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' });
   await expect(page).toHaveURL(`${baseUrl}/login`);
   await expect(page.getByRole('heading', { name: 'Human-made work, verified.' })).toBeVisible();
   await expect(page.getByLabel('Access password')).toBeVisible();
+  await expect(page.locator('script')).toHaveCount(0);
+
+  const publicLogo = await request.get(`${baseUrl}/assets/handmark-logo.svg`, {
+    maxRedirects: 0,
+  });
+  expect(publicLogo.status()).toBe(200);
+  for (const lockedPath of [
+    '/assets/handmark-stamp.svg',
+    '/assets/handmark-seal.svg',
+    '/assets/handmark-og.png',
+    '/assets/arbitrary.svg',
+  ]) {
+    const lockedAsset = await request.get(`${baseUrl}${lockedPath}`, { maxRedirects: 0 });
+    expect(lockedAsset.status(), lockedPath).toBe(302);
+    expect(lockedAsset.headers().location, lockedPath).toBe('/login');
+  }
 
   const loginMetrics = await page.evaluate(() => ({
     background: getComputedStyle(document.body).backgroundColor,
@@ -48,9 +138,15 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   expect(loginMetrics.overflow).toBe(false);
 
   await page.screenshot({
-    path: '/private/tmp/handmark-login.png',
+    path: path.join(screenshotDir, 'handmark-login.png'),
     fullPage: true,
   });
+
+  await page.getByLabel('Access password').fill('incorrect-handmark-password');
+  await page.getByRole('button', { name: 'Enter Handmark' }).click();
+  await expect(page).toHaveURL(`${baseUrl}/login?error=1`);
+  await expect(page.getByRole('alert')).toHaveText('Incorrect password. Try again.');
+  await expect(page.locator('script')).toHaveCount(0);
 
   await page.getByLabel('Access password').fill(password);
   await page.getByRole('button', { name: 'Enter Handmark' }).click();
@@ -153,7 +249,7 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   expect(seo.heroTitleLineHeight / seo.heroTitleSize).toBeCloseTo(1.05, 2);
 
   await page.screenshot({
-    path: '/private/tmp/handmark-desktop.png',
+    path: path.join(screenshotDir, 'handmark-desktop.png'),
     fullPage: true,
   });
 
@@ -181,10 +277,28 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   await page.getByRole('checkbox', { name: /I confirm this application/ }).check();
   await page.getByRole('button', { name: 'Apply for review' }).click();
   await expect(page.locator('#form-status')).toContainText('Application HM-');
-  const savedApplications = await fs.readFile(path.join(dataDir, 'applications.jsonl'), 'utf8');
-  expect(savedApplications).toContain('"contactPreference":"Email first, then video call"');
-  expect(savedApplications).toContain('"brand":"Playwright Maker Studio"');
-  expect(savedApplications).toContain('"walkthroughPreference":"Video call"');
+  const storedApplication = readStoredApplication(databasePath);
+  expect(storedApplication.intakeSequence).toBe(1);
+  expect(Object.keys(storedApplication.record)).toEqual([
+    'id',
+    'createdAt',
+    'plan',
+    'billingCycle',
+    'name',
+    'email',
+    'contactPreference',
+    'brand',
+    'website',
+    'category',
+    'craftSummary',
+    'proofLinks',
+    'walkthroughPreference',
+    'paymentPreference',
+  ]);
+  expect(storedApplication.record.contactPreference).toBe('Email first, then video call');
+  expect(storedApplication.record.brand).toBe('Playwright Maker Studio');
+  expect(storedApplication.record.walkthroughPreference).toBe('Video call');
+  expect(storedApplication.recordHash).toMatch(/^[0-9a-f]{64}$/);
 
   const basePayload = {
     plan: 'verification',
@@ -202,35 +316,39 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   };
   const missingWebsite = await page.request.post(`${baseUrl}/api/apply`, {
     data: { ...basePayload, website: '' },
+    headers: { Origin: baseUrl },
   });
-  expect(missingWebsite.status()).toBe(400);
-  expect((await missingWebsite.json()).message).toBe('website is required.');
+  await expectJsonError(missingWebsite, 400, 'invalid_application', 'website is required.');
   const badEmail = await page.request.post(`${baseUrl}/api/apply`, {
     data: { ...basePayload, email: 'not-an-email' },
+    headers: { Origin: baseUrl },
   });
-  expect(badEmail.status()).toBe(400);
-  expect((await badEmail.json()).message).toBe('Enter a valid email address.');
+  await expectJsonError(badEmail, 400, 'invalid_application', 'Enter a valid email address.');
   const invalidAgreement = await page.request.post(`${baseUrl}/api/apply`, {
     data: { ...basePayload, agree: 'true' },
+    headers: { Origin: baseUrl },
   });
-  expect(invalidAgreement.status()).toBe(400);
-  expect((await invalidAgreement.json()).message).toBe('Agreement is required.');
+  await expectJsonError(invalidAgreement, 400, 'invalid_application', 'Agreement is required.');
   const invalidBillingCycle = await page.request.post(`${baseUrl}/api/apply`, {
     data: { ...basePayload, billingCycle: 'annual' },
+    headers: { Origin: baseUrl },
   });
-  expect(invalidBillingCycle.status()).toBe(400);
-  expect((await invalidBillingCycle.json()).message).toBe('Choose a valid billing cycle.');
+  await expectJsonError(
+    invalidBillingCycle,
+    400,
+    'invalid_application',
+    'Choose a valid billing cycle.',
+  );
   const invalidFieldType = await page.request.post(`${baseUrl}/api/apply`, {
     data: { ...basePayload, website: { href: 'https://example.com' } },
+    headers: { Origin: baseUrl },
   });
-  expect(invalidFieldType.status()).toBe(400);
-  expect((await invalidFieldType.json()).message).toBe('website must be text.');
+  await expectJsonError(invalidFieldType, 400, 'invalid_application', 'website must be text.');
   const malformedJson = await page.request.post(`${baseUrl}/api/apply`, {
     data: '{',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Origin: baseUrl },
   });
-  expect(malformedJson.status()).toBe(400);
-  expect(await malformedJson.json()).toEqual({ ok: false, message: 'Request body is invalid.' });
+  await expectJsonError(malformedJson, 400, 'invalid_json', 'The request body is not valid JSON.');
 
   const malformedCookie = await page.request.get(`${baseUrl}/`, {
     headers: { Cookie: 'hm_session=%' },
@@ -265,7 +383,7 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   expect(mobileMetrics.heroTitleLineHeight / mobileMetrics.heroTitleSize).toBeCloseTo(1.05, 2);
 
   await page.screenshot({
-    path: '/private/tmp/handmark-mobile.png',
+    path: path.join(screenshotDir, 'handmark-mobile.png'),
     fullPage: true,
   });
 
@@ -279,5 +397,55 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   expect(missingAsset.headers()['cache-control']).toBe('no-store');
   expect(await missingAsset.text()).toBe('Asset not found');
 
+  await mobileMenu.click();
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await expect(page).toHaveURL(`${baseUrl}/login`);
+  await expect(page.getByRole('heading', { name: 'Human-made work, verified.' })).toBeVisible();
+
   expect(consoleErrors).toEqual([]);
 });
+
+async function expectJsonError(response, status, code, message) {
+  expect(response.status()).toBe(status);
+  expect(response.headers()['cache-control']).toBe('private, no-store');
+  const requestId = response.headers()['x-request-id'];
+  expect(requestId).toMatch(/^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,127}$/);
+  expect(await response.json()).toEqual({
+    error: { code, message, requestId },
+  });
+}
+
+function readStoredApplication(filePath) {
+  const database = new DatabaseSync(filePath, { readOnly: true });
+  try {
+    const row = database
+      .prepare(
+        'SELECT intake_sequence, record_json, record_hash FROM applications ORDER BY intake_sequence',
+      )
+      .get();
+    if (!row) throw new Error('Handmark E2E application row is missing.');
+    const canonical = Buffer.from(row.record_json);
+    const canonicalHash = createHash('sha256').update(canonical).digest('hex');
+    if (canonicalHash !== row.record_hash) {
+      throw new Error('Handmark E2E canonical application hash does not match its SQLite receipt.');
+    }
+    return {
+      intakeSequence: row.intake_sequence,
+      record: JSON.parse(canonical.toString('utf8')),
+      recordHash: row.record_hash,
+    };
+  } finally {
+    database.close();
+  }
+}
+
+function requiredEnvironment(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required for isolated Handmark E2E.`);
+  return value;
+}
+
+function isContainedPath(root, candidate) {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}

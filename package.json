@@ -4,22 +4,34 @@
   "private": true,
   "description": "Password-protected Handmark sales and application flow for human-made work verification.",
   "type": "module",
-  "packageManager": "pnpm@10.7.1",
+  "packageManager": "pnpm@11.23.0+sha512.f00082e5b283a199b74e079da28d155c008fe232f44c8a06ea7ddfa014ecf719fc362f790ecc67b28106ddac2afb24c49a9a079159da560b2ce7d1e98efd11af",
   "engines": {
     "node": ">=26 <27"
   },
   "scripts": {
-    "dev": "ng serve --configuration local --host 127.0.0.1 --port 4230",
-    "build": "ng build --configuration prod",
+    "dev": "pnpm run build:dev && concurrently -k -n browser,server -c blue,green \"pnpm run dev:browser\" \"pnpm run dev:server\"",
+    "dev:browser": "ng build --configuration local --watch --output-path .run/dev/browser-output",
+    "dev:server": "env HANDMARK_LOAD_ENV_FILE=false APP_BASE_URL=http://127.0.0.1:4230 DATA_DIR=.run/dev/data DB_PATH=.run/dev/data/handmark.sqlite HANDMARK_PASSWORD=handmark-local-development-password HOST=127.0.0.1 NODE_ENV=development PORT=4230 SESSION_SECRET=handmark-local-development-session-secret SITE_BROWSER_DIR=\"$PWD/.run/dev/browser-output/browser\" server/node_modules/.bin/tsx watch server/src/index.ts",
+    "build": "pnpm run build:browser && pnpm run build:server",
+    "build:browser": "ng build --configuration prod",
+    "build:server": "pnpm --filter handmark-server run build",
+    "build:server:release": "node server/node_modules/@mikaelcedergren/cx-framework/scripts/cx-server-artifact.mjs --package handmark-server",
     "build:release": "ng build --configuration prod --output-path \"$SITE_RELEASE_DIR\"",
     "build:local": "ng build --configuration local",
-    "start": "node server/index.mjs",
-    "typecheck": "tsc -p tsconfig.app.json --noEmit",
-    "test:server": "node --test tests/server/*.test.mjs",
-    "e2e": "playwright test tests/e2e/handmark.spec.cjs --reporter=line --workers=1",
+    "build:dev": "ng build --configuration local --output-path .run/dev/browser-output",
+    "start": "node server/dist/index.js",
+    "import:applications": "node server/dist/import-applications.js",
+    "typecheck": "pnpm run typecheck:app && pnpm run typecheck:server",
+    "typecheck:app": "tsc -p tsconfig.app.json --noEmit",
+    "typecheck:server": "pnpm --filter handmark-server run typecheck",
+    "test": "pnpm run test:server",
+    "test:server": "pnpm run build:server && pnpm --filter handmark-server run test && node --test tests/server/e2e-harness-contract.test.mjs tests/server/launchd-contract.test.mjs tests/server/server-contract.test.mjs tests/server/import-contract.test.mjs",
+    "e2e": "node scripts/run-e2e.mjs",
     "e2e:install": "playwright install chromium",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "platform:check": "node server/node_modules/@mikaelcedergren/cx-framework/scripts/check-product.mjs --root .",
+    "check": "pnpm run format:check && pnpm run platform:check && pnpm run typecheck && pnpm run test && pnpm run build"
   },
   "dependencies": {
     "@angular/cdk": "^22.0.6",
@@ -31,8 +43,18 @@
     "@angular/router": "^22.0.8",
     "@angular/ssr": "^22.0.8",
     "@mikaelcedergren/cx-framework": "github:mikaelcedergren/cx-framework#main",
-    "compression": "^1.8.1",
-    "express": "^5.2.1",
+    "ag-charts-community": "^13.3.1",
+    "marked": "^18.0.7",
+    "prosemirror-commands": "^1.7.2",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-inputrules": "^1.5.1",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-markdown": "^1.13.5",
+    "prosemirror-model": "^1.25.11",
+    "prosemirror-schema-list": "^1.5.1",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-transform": "^1.12.0",
+    "prosemirror-view": "^1.42.2",
     "rxjs": "~7.8.2",
     "tslib": "^2.8.1",
     "zone.js": "~0.16.2"
@@ -42,16 +64,8 @@
     "@angular/cli": "^22.0.8",
     "@angular/compiler-cli": "^22.0.8",
     "@playwright/test": "1.60.0",
+    "concurrently": "^9.2.4",
     "prettier": "^3.9.6",
     "typescript": "~6.0.3"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@mikaelcedergren/cx-framework",
-      "@parcel/watcher",
-      "esbuild",
-      "lmdb",
-      "msgpackr-extract"
-    ]
   }
 }

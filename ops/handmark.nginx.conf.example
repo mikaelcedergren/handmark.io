@@ -1,17 +1,11 @@
-# handmark.io prelaunch HTTP config.
-# Requires shared nginx rate-limit and proxy snippets from /Users/cortex/Development/server-ops/templates.
-
-server {
-  listen 80;
-  server_name handmark.io www.handmark.io;
-
-  location ^~ /.well-known/acme-challenge/ {
-    root /opt/homebrew/var/www/letsencrypt;
-    default_type "text/plain";
-  }
-
-  location / {
-    proxy_pass http://127.0.0.1:3000;
-    include snippets/project-proxy-common.conf;
-  }
-}
+# This repository does not own a deployable nginx template.
+#
+# The live Handmark config is /opt/homebrew/etc/nginx/servers/handmark.io.conf. Shared nginx shape,
+# rate limits, proxy behavior, ACME/TLS handling, validation, and reload procedures are owned by
+# /Users/cortex/Development/server-ops and the root SERVER-STANDARD.md / GO-LIVE.md documents.
+#
+# Handmark-specific values only:
+#   hostnames: handmark.io, www.handmark.io
+#   upstream: 127.0.0.1:3000
+#
+# Do not install this pointer file or use the retired prelaunch HTTP block as a live replacement.

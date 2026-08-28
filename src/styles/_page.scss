@@ -773,14 +773,9 @@ p {
 }
 
 .login-error {
-  display: none;
   margin: 0;
   color: var(--danger);
   font-weight: var(--font-weight-medium);
-}
-
-html[data-login-error] .login-error {
-  display: block;
 }
 
 .login-footnote {

@@ -1,6 +1,6 @@
-# Handmark.io — Agent Entry Point
+# Handmark.io — agent entry point
 
-## North star!
+## North star
 
 Handmark is a protected early product and application flow for a selective trust mark: verification that work was made by a human.
 
@@ -19,39 +19,77 @@ The public page should feel like the front door of a coherent company, not a dem
 - If approved, the verification membership continues at `$79/mo`. If not approved, no subscription starts and no stamp is issued.
 - No tiers. The applicant either proves the human-made claim and uses the mark, or they do not.
 
-## Runtime
+## Runtime and source architecture
 
-This repo now follows the shared Mac mini website standard.
+Handmark follows the shared web architecture in [`WEB-ARCHITECTURE.md`](../WEB-ARCHITECTURE.md).
+The root owns the Angular browser and product manifest; the `server` workspace owns one strict
+NodeNext TypeScript backend. Production source is compiled before it runs. Do not add a TypeScript
+loader, browser dependency, sibling-repo import, or second server implementation to the target
+architecture.
 
-- App entry: `server/index.mjs`
+- Product contract: `cx-product.json`
+- Server source: `server/src/`
+- Compiled server entry: `server/dist/index.js`
 - Angular source: `src/`
-- Static public assets and login page: `public/`
-- Application data: `data/applications.jsonl`
-- Default local server: `http://127.0.0.1:3000`
-- Password is read from `HANDMARK_PASSWORD` in `.env`; do not place it in launchd or docs.
+- Static public assets: `public/assets/`
+- Target application database: `data/handmark.sqlite`
+- Registered production service target: `http://127.0.0.1:3000`
+- In ordinary production, the compiled target reads `HANDMARK_PASSWORD` and `SESSION_SECRET` only
+  from an owned mode-`0600` `.env.web`; do not place either value in launchd or docs.
 
-Run locally:
+The server composes the published Node-only cx-framework entrypoints for configuration, gate
+authentication, cookies, request IDs, origin enforcement, JSON errors, rate limits, security,
+health, static releases, server identity, listener startup, and graceful shutdown. Handmark owns
+only its product manifest assertion, branded gate presentation, application validation/service,
+SQLite repository/schema, and the offline legacy importer.
 
-```bash
-pnpm start
-```
+`NODE_ENV` accepts only the exact values `development`, `test`, or `production`; omission means
+`development`. Isolated release validation still uses `NODE_ENV=production` and requires the
+separate framework validation flag. "Ordinary production" below means production without that
+isolated validation flag. Development, tests, and isolated release validation supply explicit
+synthetic values and do not read either target or legacy private files.
 
-Publish production content with:
-
-```bash
-node ../server-ops/bin/site-release.mjs --site handmark --apply
-```
-
-The shared release behavior and rollback procedure are owned by the root
-[`SERVER-STANDARD.md`](../SERVER-STANDARD.md).
-
-Production-like local run:
+For isolated local development, use:
 
 ```bash
-PORT=3000 HOST=127.0.0.1 HANDMARK_PASSWORD='replace-with-a-strong-password' SESSION_SECRET='replace-with-at-least-32-random-characters' pnpm start
+pnpm dev
 ```
 
-Keep `HOST=127.0.0.1` unless there is a deliberate reason to expose the Node app directly. Public traffic should reach nginx first.
+That command uses the reserved development port `4230` and `.run/dev/data`; it must not read or
+write production `data/`. `pnpm start` is the canonical compiled entrypoint after `pnpm build`, but
+do not start it casually on the Mac mini because production already owns port `3000`.
+
+Browser publication for a change proved browser-only remains:
+
+```bash
+node ../server-ops/bin/site-release.mjs --site handmark --browser-only --apply
+```
+
+Browser-only publication does not select or restart a server release. A change that can affect both
+uses the paired transaction. The shared browser/server release, restart, identity, and rollback
+contracts are owned by
+[`SERVER-STANDARD.md`](../SERVER-STANDARD.md); the Handmark application-data procedure is
+[`docs/application-storage-cutover.md`](docs/application-storage-cutover.md).
+
+### Operational selection during migration
+
+The source target above is implemented but **not selected in production yet**. The live
+`com.handmark.server` daemon still launches `node server/index.mjs` and writes
+`data/applications.jsonl`. It also still loads the legacy `.env` itself. Those legacy files and the
+tracked launchd template remain live-referenced rollback/cutover inputs; do not delete, repurpose,
+or describe them as the new architecture until the separately authorised storage and server-release
+cutover has completed. `launchd/com.handmark.server.target.plist` is the separately validated
+immutable-server candidate; `bin/install-server-daemon --check` validates both definitions without
+installing, unloading, loading, or restarting anything. `--apply` fails closed until the legacy
+role is unloaded, the immutable server release is selected, and the private target files exist.
+Run it directly as `cortex`, never through `sudo`. It delegates the only definition write to the
+shared server-ops LaunchDaemon installer only after shared server-release status authenticates the
+selected closure, installs only the definition, and still never loads or restarts the service. The
+compiled target never reads legacy `.env` as a fallback.
+
+Source work must not inspect operational applications, create `data/handmark.sqlite`, alter the
+backup registry, select a server release, or restart the daemon. Keep `HOST=127.0.0.1`; public
+traffic reaches nginx first.
 
 ## Hosting and domain reality
 
@@ -71,18 +109,52 @@ Important constraints:
 
 ## Data, secrets, and git hygiene
 
-- Secrets belong in `.env`, never in committed files.
-- `.env.example` documents expected environment keys.
-- `data/applications.jsonl` is generated local intake data. Do not commit it.
-- Application storage is intentionally bounded: records expire at 90 days, and the file has hard
-  ceilings of 100 MiB and 10,000 records. `server/application-store.mjs` owns serialized appends,
-  atomic retention compaction, drain-aware shutdown, 24-hour stale compaction-temp cleanup, and
-  clear capacity/integrity failures. The main store must remain a single-link regular file. Temp
-  cleanup matches only the store's exact generated filename shape and never follows symlinks. Do not
-  bypass the store with direct file appends.
-- Login/application abuse tracking is owned by `server/request-limiter.mjs`. Its expiring
-  client/scope buckets cap at 10,000 and fail closed when every live slot is occupied; do not add
-  an uncapped request-state map in `server/index.mjs`.
+- Target server secrets belong in `.env.web`, never in committed files. The file may contain only
+  `HANDMARK_PASSWORD` and `SESSION_SECRET` and must be one owned mode-`0600` regular file.
+- `.env.web.example` documents the compiled target's private keys. The existing `.env.example` and
+  operational `.env` belong only to the still-selected legacy daemon and its rollback window; do
+  not make them target-server fallbacks.
+- `data/applications.jsonl` and `data/handmark.sqlite*` are operational application data. Never
+  inspect, copy into fixtures, or commit them.
+- Target intake is SQLite with explicit migrations, foreign keys, WAL, a busy timeout, monotonic
+  `intake_sequence`, immutable canonical record bytes/hashes, a 90-day retention rule, a
+  10,000-record/100 MiB logical ceiling, and bounded physical/journal storage. Routes never write
+  around `server/src/application-service.ts` and `server/src/application-repository.ts`.
+- Ordinary production startup always requires an existing SQLite database with the sealed legacy
+  import receipt, including after `applications.jsonl` is intentionally removed under its approved
+  retention decision. While the JSONL evidence remains, the receipt's source byte count and
+  SHA-256 must also match that exact file. The target opens and hashes it only during startup as an
+  integrity witness; it is never the application store, a fallback reader, or a dual-write target.
+  The source must remain inside the operational root through a stable chain of real, non-symlink
+  parent directories; containment or parent-identity ambiguity fails closed.
+- The framework-owned SQLite opener proves the complete private directory chain and pins the main
+  database plus every required rollback-journal, WAL, and SHM identity before writable use. A clean
+  WAL database instead proves that its unused rollback-journal path stays absent. It re-proves that
+  storage around every statement, preserves legitimate WAL recovery, and owns the exact sidecar
+  lifecycle for every website. Handmark supplies only its product-specific sealed-receipt verifier;
+  that verifier runs read-only through the exact connection that remains writable, before framework
+  configuration or any product migration. A canonical earlier migration-ledger prefix is valid
+  upgrade input; all pending migrations and final current-schema/unchanged-receipt proof share one
+  atomic transaction. Ordinary production still requires the existing authority and never creates
+  an empty main-database replacement.
+- Initial retention runs only after the HTTP listener binds successfully. An occupied port therefore
+  exits without deleting retention-boundary records or changing the sealed receipt.
+- The target never dual-writes and never falls back to JSONL.
+- The compiled importer validates the complete bounded JSONL before publication, imports every row
+  transactionally, proves explicit sequence/IDs/timestamps/canonical hashes after reopening, keeps
+  the source unchanged, and safely recovers only its own identity-proven staging operation. Its
+  staging directory, database, and marker request their private modes at exclusive creation and
+  then prove those exact modes; the importer never widens permissions after allocation. The
+  documented one-time importer is an offline Node command, not the long-running server's sealed
+  permission-model entrypoint: its private staged rollback-journal connection and immutable
+  read-only reopen are bounded migration-only exceptions to the long-lived WAL opener because its
+  crash-safe hard-link publication contract requires them. They close before activation and are
+  unreachable from web/worker startup. The command also requires filesystem `fsync`, which Node
+  disables under its permission model. Use
+  [`docs/application-storage-cutover.md`](docs/application-storage-cutover.md); never improvise an
+  online migration.
+- Gate and intake abuse limits are framework-owned and bounded. Do not introduce a product-local
+  request-state map.
 - `test-results/` is generated. Do not commit it.
 - Do not collect raw card details in this app. Add Stripe Checkout or another payment provider before real billing.
 - The intended payment model is a `$99` review fee first, then `$79/mo` only after approval.
@@ -135,21 +207,40 @@ behaviour.
 
 ## Key files
 
-- `server/index.mjs` — Express server, login/session handling, protected routes, application API.
+- `cx-product.json` — declared Handmark product capabilities.
+- `server/src/environment-files.ts` — strict target-only `.env.web` allowlist and shared private-file
+  loader composition.
+- `server/src/index.ts` — private-file loading followed by the compiled process entry.
+- `server/src/runtime.ts` — product runtime composition and lifecycle.
+- `server/src/app.ts` — HTTP composition around shared framework middleware.
+- `server/src/gate-presentation.ts` — bounded branded presentation for the framework-owned gate.
+- `server/src/application-*.ts` — validation, service, SQLite repository/schema, importer, and
+  cutover interlock.
+- `server/index.mjs`, `server/application-store.mjs`, and `server/request-limiter.mjs` — intentional
+  legacy files still used by the live daemon until the authorised cutover; not the target source.
+- `launchd/com.handmark.server.plist` — rollback-owned definition for the still-selected legacy
+  service; never repurpose it in place.
+- `launchd/com.handmark.server.target.plist` and `bin/install-server-daemon` — fail-closed target
+  definition and definition-only installer for the authorised immutable-server cutover.
 - `src/app/app.component.html` — protected sales page template.
 - `src/app/app.component.ts` — menu and application submission behavior.
-- `public/login.html` — password gate.
-- `src/styles/site.scss` — global stylesheet entry; pulls in the cx-framework tokens, base, self-hosted fonts, and utilities, then the page composition. Compiled by Angular into a stable `/styles.css` (angular.json `styles`, `inject: false`) that both the app and the static login page link.
+- `public/login.html` — intentional legacy gate page for the still-live MJS server; target gate HTML
+  comes from `server/src/gate-presentation.ts` through cx-framework.
+- `src/styles/site.scss` — global stylesheet entry; pulls in cx-framework tokens, base, fonts, and
+  utilities, then the page composition. Angular compiles it into the stable `/styles.css` used by
+  the framework-rendered gate and protected app; the legacy static gate also uses it until cutover.
 - `src/styles/_page.scss` — Handmark page/login composition; arranges framework tokens and utilities only, defines no local design values.
-- `public/assets/fonts/` — framework woff2 files served from this origin for the framework `@font-face` rules.
+- `angular.json` — copies the package-owned framework fonts to same-origin `/assets/fonts/` and the
+  Handmark product assets to `/assets/`.
 - `public/assets/handmark-logo.svg` — nav/login mark.
 - `public/assets/handmark-symbol.svg` — light-background symbol.
 - `public/assets/handmark-stamp.svg` — circular verification stamp.
 - `public/assets/handmark-seal.svg` — compact seal for buyer-facing proof examples.
 - `public/assets/handmark-og.png` — real 1200x630 OpenGraph image. Regenerate it after major brand/layout changes.
 - `tests/e2e/handmark.spec.cjs` — Playwright verification.
-- `ops/handmark.nginx.conf.example` — nginx virtual host example.
-- `DOMAIN_SETUP.md` — local DNS/nginx/router setup notes.
+- `ops/handmark.nginx.conf.example` — non-installable pointer to shared nginx ownership and
+  Handmark-specific values.
+- `DOMAIN_SETUP.md` — Handmark-specific routing and operational-selection record.
 
 ## Application flow notes
 
@@ -160,11 +251,31 @@ The application form asks for the applicant, contact preference, brand/work name
 
 The applicant must provide `contactPreference`, `brand`, and `category`. Direct contact is part of approval, so do not remove the contact field unless the review process changes. `walkthroughPreference` is optional but should be saved when present.
 
-If you change the form, keep `src/app/app.component.*`, `server/index.mjs`, and `tests/e2e/handmark.spec.cjs` aligned. The server still validates required fields before writing an application.
+If you change the form, keep `src/app/app.component.*`, `server/src/application-validation.ts`, the
+persisted record contract, and `tests/e2e/handmark.spec.cjs` aligned. Validation belongs before the
+application service writes one atomic SQLite record.
 
 ## Verification
 
 Use Playwright for UI verification. Do not claim a visual change is verified unless you actually ran it or explicitly say you could not.
+
+The canonical non-destructive repository gate is:
+
+```bash
+pnpm check
+```
+
+It verifies formatting, the cx-framework product contract, strict browser/server TypeScript,
+compiled server/importer contracts, deterministic tests, and the complete production build. CI
+runs the same command on Node 26 before the isolated browser job.
+
+Target server tests start only compiled JavaScript on loopback with ownership-proven operating-system
+temporary roots, synthetic browser output, and synthetic SQLite databases. They cover the gate,
+security/cache contract, signed-cookie tamper/restart behavior, mutation origins, shared errors,
+SQLite intake/retention/health, listener failure, graceful shutdown, the startup receipt/source and
+parent-containment interlocks, and exhaustive importer safety/parity. The separate
+`tests/server/current-*` files remain legacy characterization evidence; they do not define the
+target implementation.
 
 Run the isolated Playwright script:
 
@@ -172,30 +283,27 @@ Run the isolated Playwright script:
 pnpm e2e
 ```
 
-The Playwright config builds and serves on reserved port `4231`, uses an explicit local build path,
-and writes applications to a temporary test-only directory. The suite refuses the production port
-and production `data/` directory.
+The Playwright config builds the browser and compiled server, serves on a dynamically assigned
+runner-owned loopback port, blocks
+external traffic, and keeps the browser, SQLite database, screenshots, and process state inside one
+ownership-proven temporary root. The shared E2E range is disjoint from production port `3000`; the
+suite also refuses the repo's production `data/` directory, then removes its complete runtime root.
 
 The test covers:
 
-- Login wall.
+- Branded framework-owned login gate, selective pre-auth assets, and no script on the gate page.
 - Night-mode background.
 - SEO metadata.
 - Hero and proof-page sales flow.
 - One membership only.
 - Review fee and approval-gated subscription copy.
 - Layout width constraints.
-- Application submission.
+- Application submission and exact SQLite canonical-record/hash persistence.
+- Shared JSON error and logout behavior.
 - Mobile hamburger.
 - `robots.txt` and `sitemap.xml`.
 
-Screenshots are written to:
-
-```text
-/private/tmp/handmark-login.png
-/private/tmp/handmark-desktop.png
-/private/tmp/handmark-mobile.png
-```
+Screenshots are test artifacts inside the owned temporary E2E root and are removed by teardown.
 
 ## Local service checks
 
@@ -225,7 +333,7 @@ Expected localgate behavior is separate from Handmark. Do not "fix" localgate wh
 ## Implementation preferences
 
 - Keep this repo aligned with the shared Angular/Cortex-framework/server standard. Do not add one-off runtime patterns.
-- Prefer small, direct Node and static-file changes.
+- Prefer small typed product modules composed around published framework primitives.
 - Keep edits scoped to Handmark files.
 - Keep comments sparse and useful.
 - Use ASCII by default.

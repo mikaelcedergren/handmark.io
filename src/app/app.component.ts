@@ -142,13 +142,13 @@ export class AppComponent {
         signal: AbortSignal.timeout(15_000),
       });
       const result = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
         id?: string;
-        message?: string;
         ok?: boolean;
       } | null;
 
       if (!response.ok || !result?.ok || !result.id) {
-        throw new Error(result?.message || 'Application could not be saved.');
+        throw new Error(result?.error?.message || 'Application could not be saved.');
       }
 
       this.resetModel();
