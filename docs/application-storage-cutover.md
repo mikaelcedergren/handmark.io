@@ -13,21 +13,29 @@ The shared release, backup, health, and rollback contracts are owned by
 
 - Stop the legacy daemon before inspecting or importing its JSONL file. The old writer has no
   migration lock, so an online copy cannot be proven complete.
-- Import the exact source once into an absent SQLite target. There is no dual write, JSONL fallback,
-  compatibility reader, skipped row, repair mode, or partial import.
-- Keep the original JSONL bytes unchanged and read-only. The importer repeatedly proves its inode,
-  metadata, complete digest, and bytes while it runs. After cutover, while it remains at
-  `data/applications.jsonl`, the target opens and hashes it during startup as an integrity witness;
-  it is never the application store, a request-time reader, fallback, or dual-write target.
+- Select exactly one sealed authority after the legacy daemon is stopped: the exact existing JSONL,
+  or explicit absence when the successfully initialised legacy service has an honestly empty
+  queue. A zero-byte file is still JSONL authority. Empty-absence authority never creates, moves,
+  deletes, or substitutes a JSONL file. There is no dual write, fallback, compatibility reader,
+  skipped row, repair mode, or partial import.
+- When JSONL authority exists, keep its bytes unchanged and read-only. The importer repeatedly
+  proves its inode, metadata, complete digest, and bytes while it runs. After cutover, while it
+  remains at `data/applications.jsonl`, the target opens and hashes it during startup as an
+  integrity witness; it is never the application store, a request-time reader, fallback, or
+  dual-write target. Empty-absence mode instead pins the source parent and repeatedly proves the
+  named path remains absent.
 - Ordinary production startup always requires an existing selected SQLite database containing the
-  one sealed legacy import receipt. That requirement survives an eventual approved removal of the
-  JSONL evidence. While the source remains, the receipt's source byte count and SHA-256 must also
-  match the exact file, and the source's complete parent-directory chain must remain contained,
-  real, non-symlinked, and identity-stable inside the operational root. These checks happen before
-  retention, intake, or listening. Development and isolated release validation are exempt so
-  owned synthetic roots may create fresh databases; they never establish operational cutover
-  proof. Never bypass the production interlock by moving the source, creating an empty database, or
-  changing `DATA_DIR`.
+  one sealed legacy import receipt and matching authority kind. JSONL authority requires the source
+  to remain present with an exact byte-count/SHA-256 match; deleting or moving it fails startup.
+  Empty-absence authority requires the source to remain absent. Absence cannot prove that JSONL
+  evidence was intentionally retired, so any future removal requires an explicit schema migration
+  that durably records the approval before the file is removed. The source or its absence and
+  complete parent chain must remain contained, real, non-symlinked, and identity-stable inside the
+  operational root. These checks happen before retention, intake, or listening.
+  Development and isolated release validation are exempt so owned synthetic roots may create fresh
+  databases; they never establish operational cutover proof. Never bypass the production interlock
+  by moving the source, fabricating an empty file, creating an empty database, or changing
+  `DATA_DIR`.
 - Receipt preflight uses SQLite's immutable read-only access against the descriptor-pinned main
   database. It cannot create or alter WAL/SHM files. Before writable open, the main database,
   every required rollback-journal reservation, and WAL/SHM paths must each be directory-contained,
@@ -43,9 +51,9 @@ The shared release, backup, health, and rollback contracts are owned by
   `0600`, then identity-proven before SQLite opens writable storage. In every mode, missing sidecar
   reservations use the same allocation discipline only after the selected main database passes its
   required proof; SQLite never creates an unowned pathname on demand.
-- A pre-existing database, SQLite sidecar, ambiguous staging residue, changed source, or failed
-  parity proof blocks cutover. Do not delete or rename the conflicting evidence to make the import
-  pass.
+- A pre-existing database, SQLite sidecar, ambiguous staging residue, changed/appearing source, or
+  failed parity proof blocks cutover. Do not delete or rename conflicting evidence to make the
+  import pass.
 - Do not resume the legacy writer after the new server has accepted a SQLite application. That
   would fork the review queue.
 - Every `sudo`, service, registry, release-selection, backup, and public verification action below
@@ -60,10 +68,12 @@ Do not begin until all of these are recorded:
 2. `pnpm check` and `pnpm e2e` pass from the final source.
 3. A physical server artifact passes isolated identity, health, network, filesystem, dependency,
    shutdown, and deterministic-digest checks.
-4. The stopped operational JSONL fits the importer's explicit source, record, and per-record bounds.
-   The current fail-closed ceilings are 100 MiB for the source, 10,000 records, and 512 KiB per
-   record. A bound failure requires a new reviewed migration design; it is never split or
-   truncated.
+4. The stopped legacy authority has been classified. An existing operational JSONL fits the
+   importer's explicit source, record, and per-record bounds: 100 MiB, 10,000 records, and 512 KiB
+   per record. If it is absent, the recorded pre-stop health/initialisation evidence plus stable
+   post-stop absence prove the legacy queue was honestly empty; uncertainty is a blocker. A bound
+   or authority failure requires a reviewed migration design and is never split, truncated, or
+   replaced with a fabricated file.
 5. A disposable extracted SQLite backup and restore reproduce the imported database exactly before
    `sqlite-online` is added to the real registry.
 6. The new server release, launchd change, backup declaration, and rollback commands have been
@@ -99,6 +109,8 @@ change:
 
 ```bash
 HANDMARK_REPO=/Users/cortex/Development/handmark.io
+HANDMARK_OPERATIONAL_ROOT="$HANDMARK_REPO"
+HANDMARK_DATA="$HANDMARK_REPO/data"
 HANDMARK_SOURCE=/Users/cortex/Development/handmark.io/data/applications.jsonl
 HANDMARK_TARGET=/Users/cortex/Development/handmark.io/data/handmark.sqlite
 HANDMARK_EVIDENCE=/Users/cortex/Development/handmark.io/.run/application-cutover
@@ -158,13 +170,43 @@ Re-record the moved file's identity and SHA-256 and match them to the pre-stop p
 operator must see both exact launchd status `113` and an absent conventional installed plist before
 it may select the already prepared candidates.
 
-## 2. Capture the immutable source proof
+## 2. Select and capture the sealed authority
 
-Reuse the absolute paths from step 1. Record the source's `lstat` identity, mode, link
-count, size, timestamps, and SHA-256 without printing application content. Confirm that the source
-is one regular, single-link file contained inside the operational root and that every parent from
-the root to `data/` is one real, non-symlink directory whose identity remains stable through the
-proof. Confirm that the target and all of these paths are absent:
+Reuse the absolute paths from step 1. First record the operational root and `data/` directory
+`lstat` identities, owners, and modes. Both must already exist as current-user-owned real
+directories, and their canonical paths must equal the paths above. Do not change either directory
+manually to make a check pass.
+
+Select exactly one of these mutually exclusive authorities and record the selection as
+`HANDMARK_IMPORT_AUTHORITY`. The importer requires the exact `applications.jsonl` path directly
+beside `handmark.sqlite`; another filename or directory is not valid authority.
+
+- `jsonl`: `HANDMARK_SOURCE` exists as one regular, single-link file. Record its `lstat` identity,
+  mode, link count, size, timestamps, and SHA-256 without printing application content. Confirm
+  every parent from the operational root to `data/` is real, non-symlinked, and identity-stable.
+- `empty-absence`: `HANDMARK_SOURCE` is absent. This is valid only when the pre-stop health record
+  proves the legacy service successfully initialised and the stopped writer's contract therefore
+  makes an absent file equivalent to a zero-record queue. Record two stable `ENOENT` observations
+  around an unchanged parent-chain proof and an explicit operator statement that the queue is
+  empty. Do not select this mode if the file may have been deleted, moved, expired unexpectedly, or
+  was never covered by a successful legacy initialisation. Do not create an empty JSONL. A present
+  zero-byte file selects `jsonl`, not `empty-absence`.
+
+Set and freeze the exact recorded value in the operator shell:
+
+```bash
+# Choose exactly one after completing the matching proof above.
+HANDMARK_IMPORT_AUTHORITY=jsonl
+# HANDMARK_IMPORT_AUTHORITY=empty-absence
+readonly HANDMARK_IMPORT_AUTHORITY
+
+case "$HANDMARK_IMPORT_AUTHORITY" in
+  jsonl|empty-absence) ;;
+  *) echo "Handmark import authority is not explicitly selected" >&2; exit 1 ;;
+esac
+```
+
+For either authority, confirm that the target and all of these paths are absent:
 
 ```text
 data/handmark.sqlite
@@ -184,15 +226,36 @@ Only the importer may recover or remove that directory, and only after its priva
 durable marker, stopped owner, source, target name, parent, and database inode all match the current
 operation. Unknown entries or identities are preserved as conflicts.
 
+The importer will descriptor-pin the operational root and every descendant through the target
+database directory. It never changes the operational root. Each required descendant must already
+grant owner read, write, and execute permission; the importer may only narrow that directory's
+group/other/special bits to exact mode `0700` through its open descriptor. It fails rather than
+widening owner permissions. This expected, recorded `data/` permission narrowing happens before
+staging or publication and is re-proven throughout the operation; unrelated ancestry is not
+altered.
+
 ## 3. Build and run the offline import
 
-Build the final compiled server, then invoke only the compiled importer with explicit paths:
+Build the final compiled server, then invoke only the compiled importer with explicit paths and the
+authority selected in step 2:
 
 ```bash
 corepack pnpm build:server
-node server/dist/import-applications.js \
-  --source "$HANDMARK_SOURCE" \
-  --database "$HANDMARK_TARGET"
+case "$HANDMARK_IMPORT_AUTHORITY" in
+  jsonl)
+    node server/dist/import-applications.js \
+      --operational-root "$HANDMARK_OPERATIONAL_ROOT" \
+      --source "$HANDMARK_SOURCE" \
+      --database "$HANDMARK_TARGET"
+    ;;
+  empty-absence)
+    node server/dist/import-applications.js \
+      --operational-root "$HANDMARK_OPERATIONAL_ROOT" \
+      --source "$HANDMARK_SOURCE" \
+      --database "$HANDMARK_TARGET" \
+      --empty-authority
+    ;;
+esac
 ```
 
 Run this stopped-service migration as the documented offline Node command. Do not add Node's
@@ -200,16 +263,23 @@ Run this stopped-service migration as the documented offline Node command. Do no
 crash-safe staging and publication protocol. The sealed permission model belongs to the ordinary
 long-running server artifact, not this one-time migration process.
 
-Capture the receipt JSON. It binds the source byte count and SHA-256 to the record count and ordered
-canonical-record hash. The importer validates the whole bounded source before creating a database,
-commits every row and the receipt together, reopens and pins the result, and proves schema,
-integrity, IDs, explicit intake sequence, timestamps, canonical BLOB bytes, projections, and hashes
-before it returns. It builds in a private identity-proven staging namespace, checks every target
-SQLite sidecar before and after publication, and retains ambiguous crash residue as evidence
-instead of guessing ownership.
+Capture the receipt JSON. It seals `authorityKind` as either `legacy_jsonl_v1` or
+`legacy_empty_absence_v1`. JSONL authority binds the exact source byte count and SHA-256 to the
+record count and ordered canonical-record hash. Empty-absence authority has canonical
+domain-separated empty evidence and exactly zero records; it is not the digest of a fabricated
+file. The importer commits every row, receipt, and authority together, reopens and pins the result,
+and proves schema, integrity, IDs, explicit intake sequence, timestamps, canonical BLOB bytes,
+projections, and hashes before it returns. It builds in a private identity-proven staging
+namespace, checks every target SQLite sidecar before and after publication, and retains ambiguous
+crash residue as evidence instead of guessing ownership.
 
-Run the same command a second time. Exact replay must return the same receipt without changing the
-source or target. A different result, sidecar, changed inode, residue, or conflict blocks cutover.
+After the first successful run, prove the operational root has the same identity, owner, and mode
+recorded in step 2. Prove `data/` has the same identity and owner and now has exact mode `0700`.
+Any other ancestry or ownership change blocks cutover.
+
+Run the same selected `case` command a second time. Exact replay must return the same receipt
+without changing the source/absence or target. Never switch authority modes between attempts. A
+different result, sidecar, changed inode, residue, or conflict blocks cutover.
 If a prior invocation was interrupted, rerun the exact command only after reviewing the preserved
 paths; the importer either proves and completes its own durable operation or fails with a recovery
 conflict. Do not manually "finish" a link window or delete a marker.
@@ -220,7 +290,7 @@ Use an ownership-proven disposable root and the shared server-ops SQLite-online 
 Extract the snapshot into a second disposable location, open the restored database read-only, and
 run the same schema/integrity/receipt/row/hash proof against it. Record:
 
-- source proof and importer receipt;
+- selected authority proof and importer receipt;
 - imported target identity, mode, size, and digest;
 - backup archive identity and digest;
 - restored database identity and digest;
@@ -274,26 +344,29 @@ this migration.
 After the legacy role is stopped/unloaded, its installed definition is absent, the data/restore
 proof is recorded, and server-ops has selected the paired candidates, run
 `bin/install-server-daemon --apply`. The installer re-proves the selected identity and entrypoint,
-the owned mode-`0600` `.env.web` and database, and exact target plist before delegating the sole
-write to the shared server-ops LaunchDaemon-definition transaction. It never bootouts, bootstraps,
-kickstarts, loads, or restarts Handmark. Treat any pre-existing different definition as a blocker;
-do not overwrite around it. Run the installer directly as `cortex`, never through `sudo`; the
-shared server-release status authenticates the complete selected release in the expected offline
-state. The wrapper then validates a private staged copy of the target plist so concurrent checkout
-edits cannot change its semantics between product validation and the shared writer's exact source
-snapshot. The definition writer requests only its narrow privileged filesystem transaction itself.
+the current-user-owned real operational root, the exact mode-`0700` real `data/` directory, the
+owned mode-`0600` `.env.web` and database, and exact target plist before delegating the sole write
+to the shared server-ops LaunchDaemon-definition transaction. It proves those directory modes but
+never changes them. It never bootouts, bootstraps, kickstarts, loads, or restarts Handmark. Treat
+any pre-existing different definition as a blocker; do not overwrite around it. Run the installer
+directly as `cortex`, never through `sudo`; the shared server-release status authenticates the
+complete selected release in the expected offline state. The wrapper then validates a private
+staged copy of the target plist so concurrent checkout edits cannot change its semantics between
+product validation and the shared writer's exact source snapshot. The definition writer requests
+only its narrow privileged filesystem transaction itself.
 
 The server accepts only exact `NODE_ENV` values `development`, `test`, and `production`; this
 operational launch uses `production`. Isolated release validation also uses `production` but is
 distinguished by its framework-owned validation flag.
 
 Before the server binds, its startup interlock proves the existing selected database has the sealed
-legacy import receipt whether or not `data/applications.jsonl` still exists. While the source
-remains, it pins the file and its parent-directory chain, matches the receipt to the exact source
-bytes/hash, and proves the complete path and file did not change during that check. A missing
-database, missing or mismatched receipt, unsafe or escaping path, linked/replaced parent, unsafe
-database artifact, or changed source must exit nonzero without listening or creating a production
-replacement.
+legacy import receipt and matching authority. A present file requires JSONL authority; startup pins
+it and its parent chain and matches its exact bytes/hash. An absent path accepts only canonical
+empty-absence authority. Deleting JSONL evidence therefore fails startup even when its sealed JSONL
+receipt remains. If a file appears against empty-absence authority, startup also fails. A missing
+database, missing/mismatched authority or receipt, unsafe or escaping path, linked/replaced parent,
+unsafe database artifact, or changed source must exit nonzero without listening or creating a
+production replacement.
 
 Receipt preflight opens the pinned main database through immutable read-only SQLite, which cannot
 create WAL/SHM. Before writable open, the process descriptor-pins and identity-checks the contained,
@@ -356,7 +429,8 @@ node ../server-ops/bin/full-stack-cutover.mjs \
 
 This first-cutover revert restores the recorded prior browser pointer and an unselected server
 state; restore the byte-exact legacy plist separately, restart the legacy daemon, and verify that
-the source still matches its captured proof. Never run independent browser and server rollbacks.
+the selected source/absence still matches its captured authority proof. Never run independent
+browser and server rollbacks.
 
 After any new SQLite intake, the legacy JSONL writer is no longer a safe rollback target. Stop the
 new server, compare the database with the import receipt, and keep intake offline. Fix forward from
@@ -365,17 +439,23 @@ row.
 
 ## 7. Preserve evidence without creating a fallback
 
-The cutover run does not delete the original JSONL. Keep it access-restricted and read-only as
-migration/rollback evidence. While retained at `data/applications.jsonl`, it is also the target
+With JSONL authority, the cutover run does not delete the original file. Keep it access-restricted
+and read-only as migration/rollback evidence. At `data/applications.jsonl`, it is also the target
 runtime's startup integrity witness: the process opens and hashes it to match the sealed receipt,
 but never uses it as the application store, fallback, request-time reader, or dual-write target.
 Record a separate owner-approved retention decision that reconciles evidence needs with Handmark's
-90-day application policy; do not silently retain operational PII forever and do not delete the
-only migration evidence during cutover. If that later decision authorises removal, every ordinary
-production startup still requires the durable sealed receipt; absence of the source does not turn
-the selected database into an unproven fresh store.
+90-day application policy; do not silently retain operational PII forever or delete the only
+migration evidence during cutover. Approval alone is not yet executable: before any later removal,
+add and deploy an explicit schema migration that durably records evidence retirement and update the
+startup contract to verify it. Until then, removing the JSONL intentionally blocks production
+startup.
 
-Operational cutover completion requires the final source proof, both receipts, database parity,
+With empty-absence authority, there is no JSONL artifact to preserve. Preserve the recorded stopped
+service/empty-queue determination, repeated absence proof, canonical receipt, restore proof, and
+release evidence. The source path must remain absent; never create a file later to make the
+evidence look like the JSONL case.
+
+Operational cutover completion requires the final authority proof, both receipts, database parity,
 extracted restore, release identity, health, backup, and public verification evidence in the
 architecture migration ledger. The source-only architecture phase records these as explicitly
 deferred entry gates; it does not perform or claim them.

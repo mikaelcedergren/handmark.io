@@ -142,13 +142,34 @@ fi
 /usr/bin/python3 - \
   "$INSTALL_ROOT/.env.web" \
   "$INSTALL_ROOT/data/handmark.sqlite" \
+  "$INSTALL_ROOT" \
+  "$INSTALL_ROOT/data" \
   "$EXPECTED_OPERATOR_UID" <<'PY'
 import os
 import stat
 import sys
 
-private_environment, database, expected_uid_text = sys.argv[1:]
+private_environment, database, operational_root, data_directory, expected_uid_text = sys.argv[1:]
 expected_uid = int(expected_uid_text)
+for path, require_private in ((operational_root, False), (data_directory, True)):
+    try:
+        metadata = os.lstat(path)
+    except OSError as error:
+        raise SystemExit(f"FATAL: target cutover directory is unavailable: {path}: {error}")
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != expected_uid
+        or os.path.realpath(path) != path
+    ):
+        raise SystemExit(
+            f"FATAL: target cutover directory must be one current-user-owned real directory: {path}"
+        )
+    if require_private and stat.S_IMODE(metadata.st_mode) != 0o700:
+        raise SystemExit(
+            f"FATAL: target data directory must already be mode 0700: {path}"
+        )
+if os.path.dirname(database) != data_directory:
+    raise SystemExit("FATAL: target database must remain directly inside the proven data directory")
 for path in (private_environment, database):
     try:
         metadata = os.lstat(path)

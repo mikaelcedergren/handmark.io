@@ -29,7 +29,11 @@ interface DirectoryProof {
   readonly lexicalPath: string;
 }
 
-export interface LegacyApplicationSourceProof {
+export type LegacyApplicationAuthorityProof =
+  LegacyApplicationPresentSourceProof | LegacyApplicationAbsentSourceProof;
+
+interface LegacyApplicationPresentSourceProof {
+  readonly kind: 'present_jsonl';
   readonly sourceBytes: number;
   readonly sourcePath: string;
   readonly sourceSha256: string;
@@ -37,13 +41,20 @@ export interface LegacyApplicationSourceProof {
   close(): void;
 }
 
-export function openLegacyApplicationSourceProof({
+interface LegacyApplicationAbsentSourceProof {
+  readonly kind: 'absent';
+  readonly sourcePath: string;
+  assertUnchanged(): void;
+  close(): void;
+}
+
+export function openLegacyApplicationAuthorityProof({
   operationalRoot,
   sourcePath,
 }: {
   readonly operationalRoot: string;
   readonly sourcePath: string;
-}): LegacyApplicationSourceProof | undefined {
+}): LegacyApplicationAuthorityProof {
   assertNormalizedAbsolutePath(operationalRoot, 'Legacy application operational root');
   assertNormalizedAbsolutePath(sourcePath, 'Legacy application source path');
   const relativeSource = path.relative(operationalRoot, sourcePath);
@@ -57,14 +68,27 @@ export function openLegacyApplicationSourceProof({
   }
 
   const directoryProofs = inspectDirectoryChain(operationalRoot, path.dirname(sourcePath));
-  if (directoryProofs === undefined) return undefined;
   const expectedCanonicalSource = path.join(directoryProofs[0].canonicalPath, relativeSource);
 
   let pathIdentity: FileIdentity;
   try {
     pathIdentity = inspectRegularSingleLinkSource(sourcePath, expectedCanonicalSource);
   } catch (error) {
-    if (isNodeError(error) && error.code === 'ENOENT') return undefined;
+    if (isNodeError(error) && error.code === 'ENOENT') {
+      let closed = false;
+      assertAbsentSourceUnchanged(sourcePath, directoryProofs);
+      return Object.freeze({
+        assertUnchanged() {
+          if (closed) throw new Error('Legacy application authority proof is already closed.');
+          assertAbsentSourceUnchanged(sourcePath, directoryProofs);
+        },
+        close() {
+          closed = true;
+        },
+        kind: 'absent' as const,
+        sourcePath,
+      });
+    }
     throw error;
   }
   if (pathIdentity.size > BigInt(APPLICATION_MAX_CANONICAL_BYTES)) {
@@ -112,6 +136,7 @@ export function openLegacyApplicationSourceProof({
         closed = true;
         fs.closeSync(descriptor);
       },
+      kind: 'present_jsonl' as const,
       sourceBytes,
       sourcePath,
       sourceSha256,
@@ -153,7 +178,7 @@ function inspectRegularSingleLinkSource(
 function inspectDirectoryChain(
   operationalRoot: string,
   sourceDirectory: string,
-): readonly [DirectoryProof, ...DirectoryProof[]] | undefined {
+): readonly [DirectoryProof, ...DirectoryProof[]] {
   const rootEntry = fs.lstatSync(operationalRoot, { bigint: true });
   if (!rootEntry.isDirectory() || rootEntry.isSymbolicLink()) {
     throw new Error('Legacy application operational root must be a real directory.');
@@ -172,7 +197,11 @@ function inspectDirectoryChain(
     try {
       entry = fs.lstatSync(lexicalDirectory, { bigint: true });
     } catch (error) {
-      if (isNodeError(error) && error.code === 'ENOENT') return undefined;
+      if (isNodeError(error) && error.code === 'ENOENT') {
+        throw new Error('Legacy application source directory must already exist.', {
+          cause: error,
+        });
+      }
       throw error;
     }
     if (!entry.isDirectory() || entry.isSymbolicLink()) {
@@ -186,6 +215,23 @@ function inspectDirectoryChain(
     proofs.push(directoryProof(lexicalDirectory, canonicalDirectory, entry));
   }
   return Object.freeze(proofs);
+}
+
+function assertAbsentSourceUnchanged(
+  sourcePath: string,
+  directoryProofs: readonly DirectoryProof[],
+): void {
+  assertDirectoryChainUnchanged(directoryProofs);
+  try {
+    fs.lstatSync(sourcePath);
+  } catch (error) {
+    if (isNodeError(error) && error.code === 'ENOENT') {
+      assertDirectoryChainUnchanged(directoryProofs);
+      return;
+    }
+    throw error;
+  }
+  throw new Error('Legacy application source appeared while its absence was verified.');
 }
 
 function directoryProof(

@@ -6,7 +6,7 @@ import path from 'node:path';
 import test, { type TestContext } from 'node:test';
 
 import { APPLICATION_MAX_CANONICAL_BYTES } from './constants.js';
-import { openLegacyApplicationSourceProof } from './legacy-cutover.js';
+import { openLegacyApplicationAuthorityProof } from './legacy-cutover.js';
 
 function fixtureRoot(t: TestContext): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'handmark-legacy-cutover-'));
@@ -14,28 +14,30 @@ function fixtureRoot(t: TestContext): string {
   return root;
 }
 
-test('legacy source proof is absent only when the exact path is absent', (t) => {
+test('legacy authority explicitly pins an absent source path', (t) => {
   const root = fixtureRoot(t);
-  assert.equal(
-    openLegacyApplicationSourceProof({
-      operationalRoot: root,
-      sourcePath: path.join(root, 'applications.jsonl'),
-    }),
-    undefined,
-  );
+  const sourcePath = path.join(root, 'applications.jsonl');
+  const proof = openLegacyApplicationAuthorityProof({ operationalRoot: root, sourcePath });
+  assert.equal(proof.kind, 'absent');
+  assert.doesNotThrow(() => proof.assertUnchanged());
+  fs.writeFileSync(sourcePath, '{}\n');
+  assert.throws(() => proof.assertUnchanged(), /appeared while its absence was verified/);
+  proof.close();
+  assert.throws(() => proof.assertUnchanged(), /already closed/);
+  fs.unlinkSync(sourcePath);
 
   const target = path.join(root, 'target.jsonl');
   const linked = path.join(root, 'applications.jsonl');
   fs.writeFileSync(target, '{}\n');
   fs.symlinkSync(target, linked);
   assert.throws(
-    () => openLegacyApplicationSourceProof({ operationalRoot: root, sourcePath: linked }),
+    () => openLegacyApplicationAuthorityProof({ operationalRoot: root, sourcePath: linked }),
     /single-link regular file/,
   );
   fs.unlinkSync(linked);
   fs.linkSync(target, linked);
   assert.throws(
-    () => openLegacyApplicationSourceProof({ operationalRoot: root, sourcePath: linked }),
+    () => openLegacyApplicationAuthorityProof({ operationalRoot: root, sourcePath: linked }),
     /single-link regular file/,
   );
 });
@@ -50,17 +52,40 @@ test('legacy source proof rejects linked parents and detects parent replacement'
 
   fs.symlinkSync(outside, dataDirectory);
   assert.throws(
-    () => openLegacyApplicationSourceProof({ operationalRoot: root, sourcePath }),
+    () => openLegacyApplicationAuthorityProof({ operationalRoot: root, sourcePath }),
     /directory component is unsafe/,
   );
   fs.unlinkSync(dataDirectory);
 
   fs.mkdirSync(dataDirectory, { mode: 0o700 });
   fs.writeFileSync(sourcePath, '{}\n', { mode: 0o600 });
-  const proof = openLegacyApplicationSourceProof({ operationalRoot: root, sourcePath });
+  const proof = openLegacyApplicationAuthorityProof({ operationalRoot: root, sourcePath });
   assert.ok(proof);
   fs.renameSync(dataDirectory, movedDirectory);
   fs.symlinkSync(outside, dataDirectory);
+  assert.throws(
+    () => proof.assertUnchanged(),
+    /source directory changed during receipt verification/,
+  );
+  proof.close();
+});
+
+test('absent legacy authority requires and pins its existing parent chain', (t) => {
+  const root = fixtureRoot(t);
+  const dataDirectory = path.join(root, 'data');
+  const movedDirectory = path.join(root, 'data-original');
+  const sourcePath = path.join(dataDirectory, 'applications.jsonl');
+
+  assert.throws(
+    () => openLegacyApplicationAuthorityProof({ operationalRoot: root, sourcePath }),
+    /source directory must already exist/,
+  );
+
+  fs.mkdirSync(dataDirectory, { mode: 0o700 });
+  const proof = openLegacyApplicationAuthorityProof({ operationalRoot: root, sourcePath });
+  assert.equal(proof.kind, 'absent');
+  fs.renameSync(dataDirectory, movedDirectory);
+  fs.mkdirSync(dataDirectory, { mode: 0o700 });
   assert.throws(
     () => proof.assertUnchanged(),
     /source directory changed during receipt verification/,
@@ -74,7 +99,7 @@ test('legacy source proof rejects paths outside the operational root', (t) => {
   const sourcePath = path.join(outside, 'applications.jsonl');
   fs.writeFileSync(sourcePath, '{}\n', { mode: 0o600 });
   assert.throws(
-    () => openLegacyApplicationSourceProof({ operationalRoot: root, sourcePath }),
+    () => openLegacyApplicationAuthorityProof({ operationalRoot: root, sourcePath }),
     /must remain inside its operational root/,
   );
 });
@@ -84,8 +109,8 @@ test('legacy source proof pins exact bytes and detects later mutation or replace
   const sourcePath = path.join(root, 'applications.jsonl');
   const bytes = Buffer.from('{"id":"HM-00000001"}\n', 'utf8');
   fs.writeFileSync(sourcePath, bytes, { mode: 0o600 });
-  const proof = openLegacyApplicationSourceProof({ operationalRoot: root, sourcePath });
-  assert.ok(proof);
+  const proof = openLegacyApplicationAuthorityProof({ operationalRoot: root, sourcePath });
+  assert.equal(proof.kind, 'present_jsonl');
   assert.equal(proof.sourceBytes, bytes.byteLength);
   assert.equal(proof.sourceSha256, createHash('sha256').update(bytes).digest('hex'));
   assert.doesNotThrow(() => proof.assertUnchanged());
@@ -103,7 +128,7 @@ test('legacy source proof rejects oversized sparse input before reading it', (t)
   fs.writeFileSync(sourcePath, '');
   fs.truncateSync(sourcePath, APPLICATION_MAX_CANONICAL_BYTES + 1);
   assert.throws(
-    () => openLegacyApplicationSourceProof({ operationalRoot: root, sourcePath }),
+    () => openLegacyApplicationAuthorityProof({ operationalRoot: root, sourcePath }),
     /exceeds the 100 MiB intake ceiling/,
   );
 });

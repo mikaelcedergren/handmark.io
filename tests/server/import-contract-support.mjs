@@ -11,6 +11,7 @@ import { APPLICATION_FIELDS } from '../fixtures/application-import/records.mjs';
 export const EXPECTED_CHECKPOINTS = Object.freeze([
   'source_opened',
   'source_validated',
+  'database_directory_private',
   'temporary_created',
   'target_transaction_started',
   'record_inserted',
@@ -39,6 +40,12 @@ export const COMPILED_IMPORTER_PATH = path.join(
   'dist',
   'application-import.js',
 );
+export const COMPILED_IMPORT_CLI_PATH = path.join(
+  REPO_ROOT,
+  'server',
+  'dist',
+  'import-applications.js',
+);
 
 export function stagingDirectoryPath(databasePath) {
   return path.join(path.dirname(databasePath), `.${path.basename(databasePath)}.import-stage`);
@@ -58,6 +65,8 @@ export async function discoverImporter() {
       'APPLICATION_IMPORT_MAX_SOURCE_BYTES',
       'importApplicationsJsonl',
       'importApplicationsJsonlForTest',
+      'importEmptyApplicationsAuthority',
+      'importEmptyApplicationsAuthorityForTest',
     ].filter((name) => module[name] === undefined);
     if (missing.length > 0) {
       return {
@@ -72,7 +81,9 @@ export async function discoverImporter() {
 }
 
 export function setupImportFixture(t, { sourceName = 'applications.jsonl' } = {}) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'handmark-import-contract-'));
+  const directory = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'handmark-import-contract-')),
+  );
   t.after(() => fs.rmSync(directory, { force: true, recursive: true }));
   return {
     databasePath: path.join(directory, 'handmark.sqlite'),
@@ -106,13 +117,25 @@ export function orderedRecordHash(records) {
   return hash.digest('hex');
 }
 
-export function expectedReceipt(sourceBytes, records) {
+export function expectedReceipt(sourceBytes, records, authorityKind = 'legacy_jsonl_v1') {
   return {
+    authorityKind,
     formatVersion: 1,
     orderedRecordsSha256: orderedRecordHash(records),
     recordCount: records.length,
     sourceBytes: sourceBytes.byteLength,
     sourceSha256: sha256(sourceBytes),
+  };
+}
+
+export function expectedEmptyAuthorityReceipt() {
+  return {
+    authorityKind: 'legacy_empty_absence_v1',
+    formatVersion: 1,
+    orderedRecordsSha256: sha256(Buffer.alloc(0)),
+    recordCount: 0,
+    sourceBytes: 0,
+    sourceSha256: sha256(Buffer.from('handmark:legacy-empty-authority:v1\n', 'utf8')),
   };
 }
 
@@ -161,13 +184,16 @@ export function readImportedTarget(databasePath) {
     const receipt = database
       .prepare(
         `SELECT
+           authority.authority_kind AS authorityKind,
            format_version AS formatVersion,
            source_bytes AS sourceBytes,
            source_sha256 AS sourceSha256,
            record_count AS recordCount,
            ordered_records_sha256 AS orderedRecordsSha256
-         FROM application_import_receipts
-         WHERE receipt_key = 'legacy_jsonl_v1'`,
+         FROM application_import_receipts AS receipt
+         JOIN application_import_authorities AS authority
+           ON authority.receipt_key = receipt.receipt_key
+         WHERE receipt.receipt_key = 'legacy_jsonl_v1'`,
       )
       .get();
     const integrity = database.prepare('PRAGMA integrity_check').get();
@@ -246,12 +272,22 @@ export function expectedRows(records) {
   }));
 }
 
-export function assertImportedTarget(databasePath, sourceBytes, records) {
+export function assertImportedTarget(
+  databasePath,
+  sourceBytes,
+  records,
+  authorityKind = 'legacy_jsonl_v1',
+) {
   assertSuccessfulImportResidueAbsent(databasePath);
   assertPrivateOwnedRegularFile(databasePath);
   const target = readImportedTarget(databasePath);
   assert.deepEqual(target.applications, expectedRows(records));
-  assert.deepEqual(target.receipt, expectedReceipt(sourceBytes, records));
+  assert.deepEqual(
+    target.receipt,
+    authorityKind === 'legacy_empty_absence_v1'
+      ? expectedEmptyAuthorityReceipt()
+      : expectedReceipt(sourceBytes, records, authorityKind),
+  );
   assert.deepEqual(target.integrity, { integrity_check: 'ok' });
   assertPrivateOwnedRegularFile(databasePath);
   assertSuccessfulImportResidueAbsent(databasePath);

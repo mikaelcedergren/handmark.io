@@ -33,11 +33,13 @@ import {
   assertPrivateOwnedRegularFile,
   canonicalRecordBytes,
   captureFile,
+  COMPILED_IMPORT_CLI_PATH,
   COMPILED_IMPORTER_PATH,
   discoverImporter,
   EXPECTED_CHECKPOINTS,
   EXPECTED_LIMITS,
   expectImportError,
+  expectedEmptyAuthorityReceipt,
   expectedReceipt,
   expectedRows,
   orderedRecordHash,
@@ -62,13 +64,46 @@ function contractTest(name, optionsOrHandler, maybeHandler) {
   return test(name, { ...options, skip: CONTRACT_SKIP || options.skip }, handler);
 }
 
-async function importSource(databasePath, sourcePath) {
-  return importer.importApplicationsJsonl({ databasePath, sourcePath });
+async function importSource(databasePath, sourcePath, operationalRoot = path.dirname(sourcePath)) {
+  return importer.importApplicationsJsonl({
+    databasePath,
+    operationalRoot,
+    sourcePath,
+  });
 }
 
-async function importSourceForTest(databasePath, sourcePath, onCheckpoint) {
+async function importSourceForTest(
+  databasePath,
+  sourcePath,
+  onCheckpoint,
+  operationalRoot = path.dirname(sourcePath),
+) {
   return importer.importApplicationsJsonlForTest(
-    { databasePath, sourcePath },
+    { databasePath, operationalRoot, sourcePath },
+    Object.freeze({ onCheckpoint }),
+  );
+}
+
+async function importEmptyAuthority(
+  databasePath,
+  sourcePath,
+  operationalRoot = path.dirname(sourcePath),
+) {
+  return importer.importEmptyApplicationsAuthority({
+    databasePath,
+    operationalRoot,
+    sourcePath,
+  });
+}
+
+async function importEmptyAuthorityForTest(
+  databasePath,
+  sourcePath,
+  onCheckpoint,
+  operationalRoot = path.dirname(sourcePath),
+) {
+  return importer.importEmptyApplicationsAuthorityForTest(
+    { databasePath, operationalRoot, sourcePath },
     Object.freeze({ onCheckpoint }),
   );
 }
@@ -87,6 +122,7 @@ function importerChildEnvironment({
   return Object.freeze({
     HANDMARK_DATABASE_PATH: databasePath,
     HANDMARK_IMPORTER_PATH: COMPILED_IMPORTER_PATH,
+    HANDMARK_OPERATIONAL_ROOT: path.dirname(sourcePath),
     ...(mode === 'kill'
       ? { HANDMARK_KILL_CHECKPOINT: checkpoint }
       : {
@@ -121,6 +157,36 @@ function killImporterAtCheckpoint(databasePath, sourcePath, checkpoint) {
     await importer.importApplicationsJsonlForTest(
       {
         databasePath: process.env.HANDMARK_DATABASE_PATH,
+        operationalRoot: process.env.HANDMARK_OPERATIONAL_ROOT,
+        sourcePath: process.env.HANDMARK_SOURCE_PATH,
+      },
+      {
+        onCheckpoint(observed) {
+          if (observed === process.env.HANDMARK_KILL_CHECKPOINT) {
+            process.kill(process.pid, 'SIGKILL');
+          }
+        },
+      },
+    );
+  `;
+  const child = spawnSync(process.execPath, ['--input-type=module', '--eval', childProgram], {
+    encoding: 'utf8',
+    env: importerChildEnvironment({ checkpoint, databasePath, mode: 'kill', sourcePath }),
+    timeout: 15_000,
+  });
+  assert.equal(child.error, undefined, child.error?.message);
+  assert.equal(child.signal, 'SIGKILL', child.stderr || child.stdout);
+  assert.equal(child.status, null);
+}
+
+function killEmptyImporterAtCheckpoint(databasePath, sourcePath, checkpoint) {
+  const childProgram = String.raw`
+    import { pathToFileURL } from 'node:url';
+    const importer = await import(pathToFileURL(process.env.HANDMARK_IMPORTER_PATH).href);
+    await importer.importEmptyApplicationsAuthorityForTest(
+      {
+        databasePath: process.env.HANDMARK_DATABASE_PATH,
+        operationalRoot: process.env.HANDMARK_OPERATIONAL_ROOT,
         sourcePath: process.env.HANDMARK_SOURCE_PATH,
       },
       {
@@ -151,6 +217,7 @@ function startPausedImporter(databasePath, sourcePath, checkpoint, readyPath, re
     await importer.importApplicationsJsonlForTest(
       {
         databasePath: process.env.HANDMARK_DATABASE_PATH,
+        operationalRoot: process.env.HANDMARK_OPERATIONAL_ROOT,
         sourcePath: process.env.HANDMARK_SOURCE_PATH,
       },
       {
@@ -280,15 +347,80 @@ test('the compiled strict TypeScript importer exposes the closed migration contr
 
   assert.equal(typeof importer.importApplicationsJsonl, 'function');
   assert.equal(typeof importer.importApplicationsJsonlForTest, 'function');
+  assert.equal(typeof importer.importEmptyApplicationsAuthority, 'function');
+  assert.equal(typeof importer.importEmptyApplicationsAuthorityForTest, 'function');
   assert.deepEqual(importer.APPLICATION_IMPORT_CHECKPOINTS, EXPECTED_CHECKPOINTS);
   assert.equal(importer.APPLICATION_IMPORT_MAX_SOURCE_BYTES, EXPECTED_LIMITS.maxSourceBytes);
   assert.equal(importer.APPLICATION_IMPORT_MAX_RECORDS, EXPECTED_LIMITS.maxRecords);
   assert.equal(importer.APPLICATION_IMPORT_MAX_RECORD_BYTES, EXPECTED_LIMITS.maxRecordBytes);
 });
 
-test('the compiled importer proves private creation modes without permission mutation APIs', () => {
+test('the compiled importer narrows only descriptor-pinned directory permissions', () => {
   const compiledSource = fs.readFileSync(COMPILED_IMPORTER_PATH, 'utf8');
-  assert.doesNotMatch(compiledSource, /\b(?:f?chmod|f?chown)(?:Sync)?\b/u);
+  assert.match(compiledSource, /fs\.fchmodSync\(/u);
+  assert.doesNotMatch(compiledSource, /fs\.(?:chmod|chown|fchown)Sync\(/u);
+});
+
+contractTest(
+  'database publication narrows only its required data directory to mode 0700',
+  async (t) => {
+    const fixture = setupImportFixture(t);
+    const dataDirectory = path.join(fixture.directory, 'data');
+    const sourcePath = path.join(dataDirectory, 'applications.jsonl');
+    const databasePath = path.join(dataDirectory, 'handmark.sqlite');
+    fs.mkdirSync(dataDirectory, { mode: 0o755 });
+    fs.chmodSync(dataDirectory, 0o1755);
+    const bytes = jsonlBytes([CURRENT_RECORD]);
+    writeSource(sourcePath, bytes);
+    const rootBefore = captureFile(fixture.directory, { includeBytes: false });
+
+    const receipt = await importSource(databasePath, sourcePath, fixture.directory);
+
+    assert.deepEqual(receipt, expectedReceipt(bytes, [CURRENT_RECORD]));
+    assertPrivateOwnedDirectory(dataDirectory);
+    assertFileSnapshot(fixture.directory, rootBefore);
+    assertImportedTarget(databasePath, bytes, [CURRENT_RECORD]);
+  },
+);
+
+contractTest('database publication never widens a restrictive data directory', async (t) => {
+  const fixture = setupImportFixture(t);
+  const dataDirectory = path.join(fixture.directory, 'data');
+  const sourcePath = path.join(dataDirectory, 'applications.jsonl');
+  const databasePath = path.join(dataDirectory, 'handmark.sqlite');
+  fs.mkdirSync(dataDirectory, { mode: 0o700 });
+  const bytes = jsonlBytes([CURRENT_RECORD]);
+  writeSource(sourcePath, bytes);
+  const sourceBefore = captureFile(sourcePath);
+  fs.chmodSync(dataDirectory, 0o500);
+
+  await expectImportError(
+    () => importSource(databasePath, sourcePath, fixture.directory),
+    'invalid_options',
+  );
+
+  assert.equal(fs.statSync(dataDirectory).mode & 0o777, 0o500);
+  assert.equal(fs.existsSync(databasePath), false);
+  fs.chmodSync(dataDirectory, 0o700);
+  assertFileSnapshot(sourcePath, sourceBefore);
+});
+
+contractTest('database publication never repairs the operational root itself', async (t) => {
+  const fixture = setupImportFixture(t);
+  const bytes = jsonlBytes([CURRENT_RECORD]);
+  writeSource(fixture.sourcePath, bytes);
+  fs.chmodSync(fixture.directory, 0o1700);
+  const rootBefore = captureFile(fixture.directory, { includeBytes: false });
+  const sourceBefore = captureFile(fixture.sourcePath);
+
+  await expectImportError(
+    () => importSource(fixture.databasePath, fixture.sourcePath, fixture.directory),
+    'invalid_options',
+  );
+
+  assertFileSnapshot(fixture.directory, rootBefore);
+  assertFileSnapshot(fixture.sourcePath, sourceBefore);
+  assert.equal(fs.existsSync(fixture.databasePath), false);
 });
 
 test('importer subprocesses receive only explicit synthetic paths and checkpoints', () => {
@@ -309,11 +441,13 @@ test('importer subprocesses receive only explicit synthetic paths and checkpoint
     'HANDMARK_DATABASE_PATH',
     'HANDMARK_IMPORTER_PATH',
     'HANDMARK_KILL_CHECKPOINT',
+    'HANDMARK_OPERATIONAL_ROOT',
     'HANDMARK_SOURCE_PATH',
   ]);
   assert.deepEqual(Object.keys(paused).toSorted(), [
     'HANDMARK_DATABASE_PATH',
     'HANDMARK_IMPORTER_PATH',
+    'HANDMARK_OPERATIONAL_ROOT',
     'HANDMARK_PAUSE_CHECKPOINT',
     'HANDMARK_READY_PATH',
     'HANDMARK_RELEASE_PATH',
@@ -372,6 +506,97 @@ contractTest('an empty source imports as a sealed zero-record receipt', async (t
   assert.deepEqual(receipt, expectedReceipt(bytes, []));
   assertImportedTarget(fixture.databasePath, bytes, []);
   assertFileSnapshot(fixture.sourcePath, sourceBefore);
+});
+
+contractTest('an explicitly absent empty authority imports without creating JSONL', async (t) => {
+  const fixture = setupImportFixture(t);
+  assert.equal(fs.existsSync(fixture.sourcePath), false);
+
+  const receipt = await importEmptyAuthority(fixture.databasePath, fixture.sourcePath);
+
+  assert.deepEqual(receipt, expectedEmptyAuthorityReceipt());
+  assertImportedTarget(fixture.databasePath, Buffer.alloc(0), [], 'legacy_empty_absence_v1');
+  assert.equal(fs.existsSync(fixture.sourcePath), false);
+});
+
+contractTest('the compiled CLI requires and records explicit empty authority', (t) => {
+  const fixture = setupImportFixture(t);
+  const child = spawnSync(
+    process.execPath,
+    [
+      COMPILED_IMPORT_CLI_PATH,
+      '--operational-root',
+      fixture.directory,
+      '--source',
+      fixture.sourcePath,
+      '--database',
+      fixture.databasePath,
+      '--empty-authority',
+    ],
+    {
+      cwd: fixture.directory,
+      encoding: 'utf8',
+      env: Object.freeze({ PATH: process.env.PATH ?? '' }),
+      timeout: 15_000,
+    },
+  );
+
+  assert.equal(child.error, undefined, child.error?.message);
+  assert.equal(child.signal, null, child.stderr || child.stdout);
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+  assert.equal(child.stderr, '');
+  assert.deepEqual(JSON.parse(child.stdout), expectedEmptyAuthorityReceipt());
+  assert.equal(fs.existsSync(fixture.sourcePath), false);
+  assertImportedTarget(fixture.databasePath, Buffer.alloc(0), [], 'legacy_empty_absence_v1');
+});
+
+contractTest('empty authority rejects a present source before target creation', async (t) => {
+  const fixture = setupImportFixture(t);
+  writeSource(fixture.sourcePath, Buffer.alloc(0));
+  const sourceBefore = captureFile(fixture.sourcePath);
+
+  await expectImportError(
+    () => importEmptyAuthority(fixture.databasePath, fixture.sourcePath),
+    'source_changed',
+  );
+
+  assertFileSnapshot(fixture.sourcePath, sourceBefore);
+  assertNoTargetArtifacts(fixture.directory, fixture.databasePath, [
+    path.basename(fixture.sourcePath),
+  ]);
+});
+
+contractTest('empty authority cannot seal absence for a different source name', async (t) => {
+  const fixture = setupImportFixture(t);
+  const differentSource = path.join(fixture.directory, 'not-applications.jsonl');
+
+  await expectImportError(
+    () => importEmptyAuthority(fixture.databasePath, differentSource, fixture.directory),
+    'invalid_options',
+  );
+
+  assert.equal(fs.existsSync(differentSource), false);
+  assertNoTargetArtifacts(fixture.directory, fixture.databasePath);
+});
+
+contractTest('empty authority fails if the absent source appears before publication', async (t) => {
+  const fixture = setupImportFixture(t);
+  const appeared = Buffer.from('unexpected legacy evidence\n', 'utf8');
+
+  await expectImportError(
+    () =>
+      importEmptyAuthorityForTest(fixture.databasePath, fixture.sourcePath, (checkpoint) => {
+        if (checkpoint === 'target_reopened') {
+          fs.writeFileSync(fixture.sourcePath, appeared, { mode: 0o600 });
+        }
+      }),
+    'source_changed',
+  );
+
+  assert.deepEqual(fs.readFileSync(fixture.sourcePath), appeared);
+  assertNoTargetArtifacts(fixture.directory, fixture.databasePath, [
+    path.basename(fixture.sourcePath),
+  ]);
 });
 
 contractTest(
@@ -975,6 +1200,7 @@ contractTest(
     assert.deepEqual(observed, [
       'source_opened',
       'source_validated',
+      'database_directory_private',
       'temporary_created',
       'target_transaction_started',
       'record_inserted:1',
@@ -996,6 +1222,7 @@ contractTest('every injected lifecycle failure leaves no partial published targe
   const checkpoints = [
     'source_opened',
     'source_validated',
+    'database_directory_private',
     'temporary_created',
     'target_transaction_started',
     'record_inserted',
@@ -1083,25 +1310,32 @@ contractTest(
       await t.test(failingCheckpoint, async (t) => {
         const fixture = setupImportFixture(t);
         const bytes = jsonlBytes([CURRENT_RECORD, HISTORICAL_RECORD]);
-        writeSource(fixture.sourcePath, bytes);
-        const sourceBefore = captureFile(fixture.sourcePath);
         const databaseParent = path.join(fixture.directory, 'database-parent');
         const databasePath = path.join(databaseParent, 'handmark.sqlite');
+        const sourcePath = path.join(databaseParent, 'applications.jsonl');
         const movedDirectory = path.join(fixture.directory, `moved-${failingCheckpoint}`);
+        const movedSourcePath = path.join(movedDirectory, 'applications.jsonl');
         const replacementEvidence = path.join(databaseParent, 'replacement-evidence');
         fs.mkdirSync(databaseParent, { mode: 0o700 });
+        writeSource(sourcePath, bytes);
+        const sourceBefore = captureFile(sourcePath);
 
         await expectImportError(
           () =>
-            importSourceForTest(databasePath, fixture.sourcePath, (checkpoint) => {
-              if (checkpoint !== failingCheckpoint) return;
-              fs.renameSync(databaseParent, movedDirectory);
-              fs.mkdirSync(databaseParent, { mode: 0o700 });
-              fs.writeFileSync(replacementEvidence, 'replacement must remain untouched', {
-                mode: 0o600,
-              });
-            }),
-          'target_changed',
+            importSourceForTest(
+              databasePath,
+              sourcePath,
+              (checkpoint) => {
+                if (checkpoint !== failingCheckpoint) return;
+                fs.renameSync(databaseParent, movedDirectory);
+                fs.mkdirSync(databaseParent, { mode: 0o700 });
+                fs.writeFileSync(replacementEvidence, 'replacement must remain untouched', {
+                  mode: 0o600,
+                });
+              },
+              fixture.directory,
+            ),
+          failingCheckpoint === 'before_publish' ? 'source_changed' : 'target_changed',
         );
 
         assert.equal(
@@ -1109,7 +1343,7 @@ contractTest(
           'replacement must remain untouched',
         );
         assert.equal(fs.existsSync(databasePath), false);
-        assertFileSnapshot(fixture.sourcePath, sourceBefore);
+        assertFileSnapshot(movedSourcePath, sourceBefore);
         assert.equal(fs.existsSync(stagingDirectoryPath(databasePath)), false);
         assert.equal(
           fs.existsSync(
@@ -1261,6 +1495,33 @@ contractTest(
         const target = captureFile(fixture.databasePath, { includeBytes: false });
         assert.equal(target.mode, 0o600);
         assert.equal(target.nlink, 1);
+      });
+    }
+  },
+);
+
+contractTest(
+  'empty authority recovers its exact sealed operation after process death',
+  { timeout: 60_000 },
+  async (t) => {
+    for (const checkpoint of ['marker_durable', 'target_linked', 'target_published']) {
+      await t.test(checkpoint, async (t) => {
+        const fixture = setupImportFixture(t);
+        assert.equal(fs.existsSync(fixture.sourcePath), false);
+
+        killEmptyImporterAtCheckpoint(fixture.databasePath, fixture.sourcePath, checkpoint);
+
+        assert.equal(fs.existsSync(stagingDirectoryPath(fixture.databasePath)), true);
+        assert.equal(
+          fs.existsSync(fixture.databasePath),
+          checkpoint === 'marker_durable' ? false : true,
+        );
+
+        const receipt = await importEmptyAuthority(fixture.databasePath, fixture.sourcePath);
+
+        assert.deepEqual(receipt, expectedEmptyAuthorityReceipt());
+        assert.equal(fs.existsSync(fixture.sourcePath), false);
+        assertImportedTarget(fixture.databasePath, Buffer.alloc(0), [], 'legacy_empty_absence_v1');
       });
     }
   },
@@ -1458,6 +1719,57 @@ contractTest(
   },
 );
 
+contractTest('empty authority exact replay preserves absence and target identity', async (t) => {
+  const fixture = setupImportFixture(t);
+  const firstReceipt = await importEmptyAuthority(fixture.databasePath, fixture.sourcePath);
+  const targetBeforeReplay = captureFile(fixture.databasePath);
+
+  const secondReceipt = await importEmptyAuthority(fixture.databasePath, fixture.sourcePath);
+
+  assert.deepEqual(firstReceipt, expectedEmptyAuthorityReceipt());
+  assert.deepEqual(secondReceipt, firstReceipt);
+  assert.equal(fs.existsSync(fixture.sourcePath), false);
+  assertFileSnapshot(fixture.databasePath, targetBeforeReplay);
+  assertImportedTarget(fixture.databasePath, Buffer.alloc(0), [], 'legacy_empty_absence_v1');
+});
+
+contractTest('zero-row JSONL and absent empty authorities cannot replay each other', async (t) => {
+  await t.test('JSONL receipt cannot become empty-absence authority', async (t) => {
+    const fixture = setupImportFixture(t);
+    const bytes = Buffer.alloc(0);
+    writeSource(fixture.sourcePath, bytes);
+    await importSource(fixture.databasePath, fixture.sourcePath);
+    fs.unlinkSync(fixture.sourcePath);
+    const targetBefore = captureFile(fixture.databasePath);
+
+    await expectImportError(
+      () => importEmptyAuthority(fixture.databasePath, fixture.sourcePath),
+      'target_conflict',
+    );
+
+    assert.equal(fs.existsSync(fixture.sourcePath), false);
+    assertFileSnapshot(fixture.databasePath, targetBefore);
+    assertImportedTarget(fixture.databasePath, bytes, []);
+  });
+
+  await t.test('empty-absence receipt cannot become JSONL authority', async (t) => {
+    const fixture = setupImportFixture(t);
+    await importEmptyAuthority(fixture.databasePath, fixture.sourcePath);
+    writeSource(fixture.sourcePath, Buffer.alloc(0));
+    const sourceBefore = captureFile(fixture.sourcePath);
+    const targetBefore = captureFile(fixture.databasePath);
+
+    await expectImportError(
+      () => importSource(fixture.databasePath, fixture.sourcePath),
+      'target_conflict',
+    );
+
+    assertFileSnapshot(fixture.sourcePath, sourceBefore);
+    assertFileSnapshot(fixture.databasePath, targetBefore);
+    assertImportedTarget(fixture.databasePath, Buffer.alloc(0), [], 'legacy_empty_absence_v1');
+  });
+});
+
 contractTest(
   'exact replay rejects every public SQLite sidecar without changing any file',
   async (t) => {
@@ -1597,7 +1909,10 @@ contractTest('arbitrary and partial existing target states reject without mutati
     await importSource(fixture.databasePath, fixture.sourcePath);
 
     const database = new DatabaseSync(fixture.databasePath);
-    database.exec('DROP TABLE application_import_receipts');
+    database.exec(`
+      DROP TABLE application_import_authorities;
+      DROP TABLE application_import_receipts;
+    `);
     database.close();
     const targetBefore = captureFile(fixture.databasePath);
 
@@ -1650,6 +1965,38 @@ contractTest('the successful import receipt is sealed against direct mutation', 
              VALUES ('other', 1, 0, ?, 0, ?)`,
           )
           .run('0'.repeat(64), sha256(Buffer.alloc(0))),
+      /immutable|read.only|sealed/i,
+    );
+    assert.throws(
+      () =>
+        database
+          .prepare(
+            `UPDATE application_import_authorities
+             SET authority_kind = 'legacy_empty_absence_v1'
+             WHERE authority_key = 'legacy_cutover_v1'`,
+          )
+          .run(),
+      /immutable|read.only|sealed/i,
+    );
+    assert.throws(
+      () =>
+        database
+          .prepare(
+            `DELETE FROM application_import_authorities
+             WHERE authority_key = 'legacy_cutover_v1'`,
+          )
+          .run(),
+      /immutable|read.only|sealed/i,
+    );
+    assert.throws(
+      () =>
+        database
+          .prepare(
+            `INSERT INTO application_import_authorities
+             (authority_key, receipt_key, authority_kind)
+             VALUES ('other', 'legacy_jsonl_v1', 'legacy_jsonl_v1')`,
+          )
+          .run(),
       /immutable|read.only|sealed/i,
     );
   } finally {

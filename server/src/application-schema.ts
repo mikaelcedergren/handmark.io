@@ -22,8 +22,17 @@ import {
 
 export const APPLICATION_IMPORT_RECEIPT_KEY = 'legacy_jsonl_v1';
 export const APPLICATION_IMPORT_FORMAT_VERSION = 1;
+export const APPLICATION_IMPORT_AUTHORITY_KEY = 'legacy_cutover_v1';
+export const APPLICATION_IMPORT_AUTHORITY_KINDS = Object.freeze([
+  'legacy_jsonl_v1',
+  'legacy_empty_absence_v1',
+] as const);
+export type ApplicationImportAuthorityKind = (typeof APPLICATION_IMPORT_AUTHORITY_KINDS)[number];
+export const EMPTY_APPLICATION_AUTHORITY_SHA256 = sha256Hex('handmark:legacy-empty-authority:v1\n');
+export const EMPTY_APPLICATION_RECORDS_SHA256 = sha256Hex('');
 
 export interface ApplicationImportReceipt {
+  readonly authorityKind: ApplicationImportAuthorityKind;
   readonly formatVersion: number;
   readonly orderedRecordsSha256: string;
   readonly recordCount: number;
@@ -33,11 +42,18 @@ export interface ApplicationImportReceipt {
 
 const APPLICATIONS_TABLE = 'applications';
 const IMPORT_RECEIPTS_TABLE = 'application_import_receipts';
+const IMPORT_AUTHORITIES_TABLE = 'application_import_authorities';
 const RECEIPT_SCHEMA_OBJECTS = Object.freeze([
   'application_import_receipts',
   'application_import_receipts_sealed_delete',
   'application_import_receipts_sealed_insert',
   'application_import_receipts_sealed_update',
+] as const);
+const AUTHORITY_SCHEMA_OBJECTS = Object.freeze([
+  'application_import_authorities',
+  'application_import_authorities_sealed_delete',
+  'application_import_authorities_sealed_insert',
+  'application_import_authorities_sealed_update',
 ] as const);
 const REQUIRED_SCHEMA_OBJECTS = Object.freeze([
   'applications',
@@ -47,12 +63,15 @@ const REQUIRED_SCHEMA_OBJECTS = Object.freeze([
   'application_import_receipts_sealed_delete',
   'application_import_receipts_sealed_insert',
   'application_import_receipts_sealed_update',
+  ...AUTHORITY_SCHEMA_OBJECTS,
 ] as const);
 const EXPECTED_SCHEMA_OBJECT_NAMES = Object.freeze(
   [
     ...REQUIRED_SCHEMA_OBJECTS,
     SQLITE_MIGRATION_LEDGER_TABLE,
     'sqlite_autoindex_application_import_receipts_1',
+    'sqlite_autoindex_application_import_authorities_1',
+    'sqlite_autoindex_application_import_authorities_2',
     'sqlite_autoindex_applications_1',
     'sqlite_autoindex_cx_schema_migrations_1',
     'sqlite_sequence',
@@ -142,6 +161,42 @@ BEGIN
   SELECT RAISE(ABORT, 'application import receipts are sealed and immutable');
 END`;
 
+const IMPORT_AUTHORITIES_TABLE_SQL = `CREATE TABLE application_import_authorities (
+  authority_key TEXT PRIMARY KEY CHECK(authority_key = 'legacy_cutover_v1'),
+  receipt_key TEXT NOT NULL UNIQUE CHECK(receipt_key = 'legacy_jsonl_v1')
+    REFERENCES application_import_receipts(receipt_key),
+  authority_kind TEXT NOT NULL
+    CHECK(authority_kind IN ('legacy_jsonl_v1', 'legacy_empty_absence_v1'))
+) STRICT`;
+
+const AUTHORITY_SEALED_INSERT_TRIGGER_SQL = `CREATE TRIGGER application_import_authorities_sealed_insert
+BEFORE INSERT ON application_import_authorities
+WHEN NEW.authority_key <> 'legacy_cutover_v1'
+  OR NEW.receipt_key <> 'legacy_jsonl_v1'
+  OR EXISTS (SELECT 1 FROM application_import_authorities)
+BEGIN
+  SELECT RAISE(ABORT, 'application import authorities are sealed and immutable');
+END`;
+
+const AUTHORITY_SEALED_UPDATE_TRIGGER_SQL = `CREATE TRIGGER application_import_authorities_sealed_update
+BEFORE UPDATE ON application_import_authorities
+BEGIN
+  SELECT RAISE(ABORT, 'application import authorities are sealed and immutable');
+END`;
+
+const AUTHORITY_SEALED_DELETE_TRIGGER_SQL = `CREATE TRIGGER application_import_authorities_sealed_delete
+BEFORE DELETE ON application_import_authorities
+BEGIN
+  SELECT RAISE(ABORT, 'application import authorities are sealed and immutable');
+END`;
+
+const ADOPT_JSONL_AUTHORITY_SQL = `INSERT INTO application_import_authorities (
+  authority_key, receipt_key, authority_kind
+)
+SELECT 'legacy_cutover_v1', receipt_key, 'legacy_jsonl_v1'
+FROM application_import_receipts
+WHERE receipt_key = 'legacy_jsonl_v1'`;
+
 // Application records are append-only. Retention may delete expired rows later, but no submitted
 // or imported record may be rewritten in place after its canonical bytes have been recorded.
 const APPLICATION_IMMUTABLE_UPDATE_TRIGGER_SQL = `CREATE TRIGGER applications_immutable_update
@@ -162,6 +217,17 @@ export const HANDMARK_APPLICATION_MIGRATIONS = Object.freeze([
       RECEIPT_SEALED_UPDATE_TRIGGER_SQL,
       RECEIPT_SEALED_DELETE_TRIGGER_SQL,
       APPLICATION_IMMUTABLE_UPDATE_TRIGGER_SQL,
+    ] as const),
+  }),
+  Object.freeze({
+    version: 2,
+    name: 'seal_legacy_import_authority',
+    statements: Object.freeze([
+      IMPORT_AUTHORITIES_TABLE_SQL,
+      AUTHORITY_SEALED_INSERT_TRIGGER_SQL,
+      AUTHORITY_SEALED_UPDATE_TRIGGER_SQL,
+      AUTHORITY_SEALED_DELETE_TRIGGER_SQL,
+      ADOPT_JSONL_AUTHORITY_SQL,
     ] as const),
   }),
 ] as const satisfies readonly SqliteMigration[]);
@@ -275,6 +341,7 @@ export function insertApplicationImportReceipt(
   database: SyncSqliteDatabase,
   receipt: ApplicationImportReceipt,
 ): void {
+  assertApplicationImportReceipt(receipt);
   const result = database.run(
     `INSERT INTO ${IMPORT_RECEIPTS_TABLE} (
        receipt_key, format_version, source_bytes, source_sha256, record_count,
@@ -292,6 +359,15 @@ export function insertApplicationImportReceipt(
   if (result.changes !== 1) {
     throw new Error('The application import receipt was not inserted exactly once.');
   }
+  const authorityResult = database.run(
+    `INSERT INTO ${IMPORT_AUTHORITIES_TABLE} (
+       authority_key, receipt_key, authority_kind
+     ) VALUES (?, ?, ?)`,
+    [APPLICATION_IMPORT_AUTHORITY_KEY, APPLICATION_IMPORT_RECEIPT_KEY, receipt.authorityKind],
+  );
+  if (authorityResult.changes !== 1) {
+    throw new Error('The application import authority was not inserted exactly once.');
+  }
 }
 
 /**
@@ -302,7 +378,7 @@ export function readVerifiedLegacyApplicationImportReceipt(
   database: SyncSqliteDatabase,
 ): ApplicationImportReceipt | undefined {
   verifyApplicationSchema(database);
-  return readStoredLegacyApplicationImportReceipt(database);
+  return readStoredLegacyApplicationImportReceipt(database, true);
 }
 
 /**
@@ -314,7 +390,8 @@ export function readMigrationSafeLegacyApplicationImportReceipt(
   database: ReadonlySyncSqliteDatabase,
   migrations: readonly SqliteMigration[] = HANDMARK_APPLICATION_MIGRATIONS,
 ): ApplicationImportReceipt | undefined {
-  if (verifyApplicationMigrationLedger(database, migrations, false) === 0) {
+  const appliedMigrations = verifyApplicationMigrationLedger(database, migrations, false);
+  if (appliedMigrations === 0) {
     throw new Error('Handmark receipt foundation has no canonical migration ledger entry.');
   }
   const schemaRows = database.all<SchemaRow>(
@@ -344,11 +421,15 @@ export function readMigrationSafeLegacyApplicationImportReceipt(
     'trigger',
     RECEIPT_SEALED_DELETE_TRIGGER_SQL,
   );
-  return readStoredLegacyApplicationImportReceipt(database);
+  if (appliedMigrations >= 2) {
+    assertAuthoritySchema(database);
+  }
+  return readStoredLegacyApplicationImportReceipt(database, appliedMigrations >= 2);
 }
 
 function readStoredLegacyApplicationImportReceipt(
   database: ReadonlySyncSqliteDatabase,
+  authoritySchemaCurrent: boolean,
 ): ApplicationImportReceipt | undefined {
   const rows = database.all<ReceiptRow>(
     `SELECT
@@ -357,20 +438,44 @@ function readStoredLegacyApplicationImportReceipt(
      FROM ${IMPORT_RECEIPTS_TABLE}
      ORDER BY receipt_key`,
   );
-  if (rows.length === 0) return undefined;
+  const authorityRows = authoritySchemaCurrent
+    ? database.all<AuthorityRow>(
+        `SELECT authority_key, receipt_key, authority_kind
+         FROM ${IMPORT_AUTHORITIES_TABLE}
+         ORDER BY authority_key`,
+      )
+    : [];
+  if (rows.length === 0) {
+    if (authorityRows.length !== 0) {
+      throw new Error('Handmark database has an import authority without a receipt.');
+    }
+    return undefined;
+  }
   if (rows.length !== 1) {
     throw new Error('Handmark database has an ambiguous legacy application import receipt.');
   }
   const receipt = rows[0];
   if (!receipt) throw new Error('Handmark legacy application import receipt is missing.');
   assertStoredReceiptShape(receipt);
-  return Object.freeze({
+  let authorityKind: ApplicationImportAuthorityKind = 'legacy_jsonl_v1';
+  if (authoritySchemaCurrent) {
+    if (authorityRows.length !== 1) {
+      throw new Error('Handmark database has an ambiguous legacy application import authority.');
+    }
+    const authority = authorityRows[0];
+    if (!authority) throw new Error('Handmark legacy application import authority is missing.');
+    authorityKind = assertStoredAuthorityShape(authority);
+  }
+  const result = Object.freeze({
+    authorityKind,
     formatVersion: safeInteger(receipt.format_version, 'Receipt format version'),
     orderedRecordsSha256: receipt.ordered_records_sha256,
     recordCount: safeInteger(receipt.record_count, 'Receipt record count'),
     sourceBytes: safeInteger(receipt.source_bytes, 'Receipt source bytes'),
     sourceSha256: receipt.source_sha256,
   });
+  assertApplicationImportReceipt(result);
+  return result;
 }
 
 export function hasVerifiedLegacyApplicationImportReceipt(database: SyncSqliteDatabase): boolean {
@@ -385,19 +490,9 @@ export function verifyImportedApplicationDatabase(
   verifyApplicationSchema(database);
   verifySqliteIntegrity(database);
 
-  const receiptRows = database.all<ReceiptRow>(
-    `SELECT
-       receipt_key, format_version, source_bytes, source_sha256, record_count,
-       ordered_records_sha256
-     FROM ${IMPORT_RECEIPTS_TABLE}
-     ORDER BY receipt_key`,
-  );
-  if (receiptRows.length !== 1) {
-    throw new Error('Handmark application import must contain exactly one receipt.');
-  }
-  const storedReceipt = receiptRows[0];
+  const storedReceipt = readVerifiedLegacyApplicationImportReceipt(database);
   if (!storedReceipt) throw new Error('Handmark application import receipt is missing.');
-  assertReceipt(storedReceipt, receipt);
+  assertSameApplicationImportReceipt(storedReceipt, receipt);
 
   const rows = database.all<ApplicationRow>(
     `SELECT ${APPLICATION_ROW_COLUMNS_SQL}
@@ -481,6 +576,42 @@ export function verifyApplicationSchema(database: SyncSqliteDatabase): void {
     'trigger',
     APPLICATION_IMMUTABLE_UPDATE_TRIGGER_SQL,
   );
+  assertAuthoritySchema(database);
+}
+
+function assertAuthoritySchema(database: ReadonlySyncSqliteDatabase): void {
+  const schemaRows = database.all<SchemaRow>(
+    `SELECT type, name, sql
+     FROM sqlite_schema
+     WHERE name IN (${AUTHORITY_SCHEMA_OBJECTS.map(() => '?').join(', ')})
+     ORDER BY name`,
+    AUTHORITY_SCHEMA_OBJECTS,
+  );
+  const schema = new Map(schemaRows.map((row) => [row.name, row]));
+  assertSchemaObject(
+    schema,
+    'application_import_authorities',
+    'table',
+    IMPORT_AUTHORITIES_TABLE_SQL,
+  );
+  assertSchemaObject(
+    schema,
+    'application_import_authorities_sealed_insert',
+    'trigger',
+    AUTHORITY_SEALED_INSERT_TRIGGER_SQL,
+  );
+  assertSchemaObject(
+    schema,
+    'application_import_authorities_sealed_update',
+    'trigger',
+    AUTHORITY_SEALED_UPDATE_TRIGGER_SQL,
+  );
+  assertSchemaObject(
+    schema,
+    'application_import_authorities_sealed_delete',
+    'trigger',
+    AUTHORITY_SEALED_DELETE_TRIGGER_SQL,
+  );
 }
 
 function verifyApplicationMigrationLedger(
@@ -556,6 +687,12 @@ interface ReceiptRow extends SqliteRow {
   readonly ordered_records_sha256: string;
 }
 
+interface AuthorityRow extends SqliteRow {
+  readonly authority_key: string;
+  readonly authority_kind: string;
+  readonly receipt_key: string;
+}
+
 interface ApplicationRow extends SqliteRow {
   readonly intake_sequence: number | bigint;
   readonly id: string;
@@ -603,25 +740,12 @@ function applicationRecordSqlValues(record: ApplicationRecord): readonly SqliteV
   ];
 }
 
-function assertReceipt(row: ReceiptRow, expected: ApplicationImportReceipt): void {
-  assertStoredReceiptShape(row);
-  if (
-    row.receipt_key !== APPLICATION_IMPORT_RECEIPT_KEY ||
-    safeInteger(row.format_version, 'Receipt format version') !== expected.formatVersion ||
-    safeInteger(row.source_bytes, 'Receipt source bytes') !== expected.sourceBytes ||
-    row.source_sha256 !== expected.sourceSha256 ||
-    safeInteger(row.record_count, 'Receipt record count') !== expected.recordCount ||
-    row.ordered_records_sha256 !== expected.orderedRecordsSha256
-  ) {
-    throw new Error('Handmark application import receipt does not match its source.');
-  }
-}
-
 function assertSameApplicationImportReceipt(
   actual: ApplicationImportReceipt,
   expected: ApplicationImportReceipt,
 ): void {
   if (
+    actual.authorityKind !== expected.authorityKind ||
     actual.formatVersion !== expected.formatVersion ||
     actual.sourceBytes !== expected.sourceBytes ||
     actual.sourceSha256 !== expected.sourceSha256 ||
@@ -629,6 +753,43 @@ function assertSameApplicationImportReceipt(
     actual.orderedRecordsSha256 !== expected.orderedRecordsSha256
   ) {
     throw new Error('Handmark application import receipt changed during schema migration.');
+  }
+}
+
+function assertStoredAuthorityShape(row: AuthorityRow): ApplicationImportAuthorityKind {
+  if (
+    row.authority_key !== APPLICATION_IMPORT_AUTHORITY_KEY ||
+    row.receipt_key !== APPLICATION_IMPORT_RECEIPT_KEY ||
+    !APPLICATION_IMPORT_AUTHORITY_KINDS.includes(
+      row.authority_kind as ApplicationImportAuthorityKind,
+    )
+  ) {
+    throw new Error('Handmark legacy application import authority is invalid.');
+  }
+  return row.authority_kind as ApplicationImportAuthorityKind;
+}
+
+function assertApplicationImportReceipt(receipt: ApplicationImportReceipt): void {
+  if (
+    !APPLICATION_IMPORT_AUTHORITY_KINDS.includes(receipt.authorityKind) ||
+    receipt.formatVersion !== APPLICATION_IMPORT_FORMAT_VERSION ||
+    !Number.isSafeInteger(receipt.sourceBytes) ||
+    receipt.sourceBytes < 0 ||
+    !/^[0-9a-f]{64}$/.test(receipt.sourceSha256) ||
+    !Number.isSafeInteger(receipt.recordCount) ||
+    receipt.recordCount < 0 ||
+    !/^[0-9a-f]{64}$/.test(receipt.orderedRecordsSha256)
+  ) {
+    throw new Error('Handmark legacy application import receipt is invalid.');
+  }
+  if (
+    receipt.authorityKind === 'legacy_empty_absence_v1' &&
+    (receipt.sourceBytes !== 0 ||
+      receipt.sourceSha256 !== EMPTY_APPLICATION_AUTHORITY_SHA256 ||
+      receipt.recordCount !== 0 ||
+      receipt.orderedRecordsSha256 !== EMPTY_APPLICATION_RECORDS_SHA256)
+  ) {
+    throw new Error('Handmark empty application authority receipt is not canonical.');
   }
 }
 

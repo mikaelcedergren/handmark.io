@@ -47,6 +47,10 @@ test('daemon installer is check-first, copy-safe, definition-only, and cutover-g
   assert.match(source, /id -u cortex/);
   assert.match(source, /"\$EUID" -ne "\$EXPECTED_OPERATOR_UID"/);
   assert.match(source, /metadata\.st_uid != expected_uid/);
+  assert.match(source, /target data directory must already be mode 0700/);
+  assert.match(source, /os\.path\.realpath\(path\) != path/);
+  assert.match(source, /os\.path\.dirname\(database\) != data_directory/);
+  assert.doesNotMatch(source, /chmod\([^\n]*data_directory|chmod[^\n]*0700/);
   assert.match(source, /server-ops\/bin\/install-launchdaemon-definitions\.mjs/);
   assert.match(source, /server-ops\/bin\/server-release\.mjs/);
   assert.match(source, /--site handmark --status/);

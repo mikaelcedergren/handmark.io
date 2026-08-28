@@ -23,7 +23,7 @@ import {
   loadHandmarkEnvironment,
   type HandmarkEnvironment,
 } from './environment.js';
-import { openLegacyApplicationSourceProof } from './legacy-cutover.js';
+import { openLegacyApplicationAuthorityProof } from './legacy-cutover.js';
 import { assertHandmarkProductManifest } from './product-contract.js';
 
 export interface HandmarkRuntime {
@@ -64,10 +64,13 @@ export async function startHandmarkServer({
     environment: sourceEnvironment,
   });
 
-  const legacySource = openLegacyApplicationSourceProof({
-    operationalRoot: environment.operationalRoot,
-    sourcePath: environment.legacyApplicationsPath,
-  });
+  const legacyAuthority =
+    environment.isProduction && !environment.releaseValidation
+      ? openLegacyApplicationAuthorityProof({
+          operationalRoot: environment.operationalRoot,
+          sourcePath: environment.legacyApplicationsPath,
+        })
+      : undefined;
   let repository: ApplicationRepository | undefined;
   let repositoryOpen = false;
   try {
@@ -75,21 +78,25 @@ export async function startHandmarkServer({
       databasePath: environment.databasePath,
       operationalRoot: environment.operationalRoot,
       requireLegacyImportReceipt: environment.isProduction && !environment.releaseValidation,
-      ...(legacySource === undefined
+      ...(legacyAuthority === undefined
         ? {}
         : {
-            requiredLegacyImportSource: {
-              sourceBytes: legacySource.sourceBytes,
-              sourceSha256: legacySource.sourceSha256,
-            },
+            requiredLegacyImportAuthority:
+              legacyAuthority.kind === 'present_jsonl'
+                ? {
+                    kind: 'present_jsonl' as const,
+                    sourceBytes: legacyAuthority.sourceBytes,
+                    sourceSha256: legacyAuthority.sourceSha256,
+                  }
+                : { kind: 'absent' as const },
           }),
     });
     repository = openedRepository;
     repositoryOpen = true;
     try {
-      legacySource?.assertUnchanged();
+      legacyAuthority?.assertUnchanged();
     } finally {
-      legacySource?.close();
+      legacyAuthority?.close();
     }
     const app = createHandmarkApplication({
       browserServing: configuredBrowserServing,
@@ -164,7 +171,7 @@ export async function startHandmarkServer({
       shutdown,
     });
   } catch (error) {
-    legacySource?.close();
+    legacyAuthority?.close();
     if (repositoryOpen && repository) {
       repository.stopMaintenance();
       repository.close();

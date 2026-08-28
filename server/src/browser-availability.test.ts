@@ -72,18 +72,18 @@ test('ordinary production fails closed when its browser snapshot is missing', (t
   );
 });
 
-test('runtime proves browser availability before legacy-source and SQLite access or HTTP listen', () => {
+test('runtime proves browser availability before legacy-authority and SQLite access or HTTP listen', () => {
   const source = fs.readFileSync(new URL('./runtime.ts', import.meta.url), 'utf8');
   const startup = source.indexOf('export async function startHandmarkServer');
   const browserAssertion = source.indexOf('assertBrowserServingForStartup({', startup);
-  const legacySourceOpen = source.indexOf('openLegacyApplicationSourceProof({', startup);
+  const legacyAuthorityOpen = source.indexOf('openLegacyApplicationAuthorityProof({', startup);
   const databaseOpen = source.indexOf('openApplicationRepository({', startup);
   const listener = source.indexOf('await listenHttpApplication(', startup);
 
   assert.ok(startup >= 0);
   assert.ok(browserAssertion > startup);
-  assert.ok(legacySourceOpen > browserAssertion);
-  assert.ok(databaseOpen > legacySourceOpen);
+  assert.ok(legacyAuthorityOpen > browserAssertion);
+  assert.ok(databaseOpen > legacyAuthorityOpen);
   assert.ok(listener > databaseOpen);
 
   const browserSource = fs.readFileSync(new URL('./browser-serving.ts', import.meta.url), 'utf8');

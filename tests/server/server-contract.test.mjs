@@ -518,6 +518,7 @@ test('compiled startup never opens an empty SQLite target beside an unimported l
   const occupied = net.createServer();
   let childServer;
   try {
+    const productionIdentityFile = prepareProductionFixture(fixture, { browser: true });
     const legacyRecord = {
       id: 'HM-00000001',
       createdAt: '2026-08-25T00:00:00.000Z',
@@ -547,7 +548,7 @@ test('compiled startup never opens an empty SQLite target beside an unimported l
     assert.ok(address && typeof address === 'object');
     assert.notEqual(address.port, 3000);
 
-    childServer = spawnServerProcess(fixture, address.port);
+    childServer = spawnServerProcess(fixture, address.port, { productionIdentityFile });
     const exitCode = await waitForExit(childServer, 8_000);
     assert.equal(
       existsSync(fixture.databasePath),
@@ -572,6 +573,8 @@ test('compiled startup accepts only the exact still-present legacy source sealed
   const mismatchedFixture = createFixture();
   let exactServer;
   let mismatchedServer;
+  let exactIdentity;
+  let mismatchedIdentity;
   const legacyRecord = {
     id: 'HM-00000001',
     createdAt: new Date().toISOString(),
@@ -589,13 +592,15 @@ test('compiled startup accepts only the exact still-present legacy source sealed
     paymentPreference: 'after-approval',
   };
   try {
+    exactIdentity = prepareProductionFixture(exactFixture, { browser: true });
+    mismatchedIdentity = prepareProductionFixture(mismatchedFixture, { browser: true });
     for (const fixture of [exactFixture, mismatchedFixture]) {
       const sourcePath = path.join(fixture.dataDir, 'applications.jsonl');
       writeFileSync(sourcePath, `${JSON.stringify(legacyRecord)}\n`, { flag: 'wx', mode: 0o600 });
       await importLegacyApplications(sourcePath, fixture.databasePath);
     }
 
-    exactServer = await startServer(exactFixture);
+    exactServer = await startServer(exactFixture, { productionIdentityFile: exactIdentity });
     const health = await localFetch(`${exactServer.baseUrl}/healthz`);
     assert.equal(health.status, 200);
     await stopServer(exactServer);
@@ -608,7 +613,9 @@ test('compiled startup accepts only the exact still-present legacy source sealed
     const databaseBefore = createHash('sha256')
       .update(readFileSync(mismatchedFixture.databasePath))
       .digest('hex');
-    mismatchedServer = spawnServerProcess(mismatchedFixture, await reservePort());
+    mismatchedServer = spawnServerProcess(mismatchedFixture, await reservePort(), {
+      productionIdentityFile: mismatchedIdentity,
+    });
     const exitCode = await waitForExit(mismatchedServer, 8_000);
     assert.notEqual(exitCode, 0, mismatchedServer.output());
     assert.match(mismatchedServer.output(), /does not prove an exact import/);
@@ -629,7 +636,40 @@ test('compiled startup accepts only the exact still-present legacy source sealed
   }
 });
 
-test('ordinary production requires a durable sealed receipt after legacy evidence removal', async () => {
+test('ordinary production accepts sealed empty absence and rejects a later JSONL', async () => {
+  const fixture = createFixture();
+  let server;
+  try {
+    const productionIdentityFile = prepareProductionFixture(fixture, { browser: true });
+    const sourcePath = path.join(fixture.dataDir, 'applications.jsonl');
+    assert.equal(existsSync(sourcePath), false);
+    await importEmptyLegacyAuthority(fixture);
+
+    server = await startServer(fixture, { productionIdentityFile });
+    const health = await localFetch(`${server.baseUrl}/healthz`);
+    assert.equal(health.status, 200);
+    await stopServer(server);
+    server = undefined;
+
+    const databaseBefore = readCutoverState(fixture.databasePath);
+    writeFileSync(sourcePath, '', { flag: 'wx', mode: 0o600 });
+    server = spawnServerProcess(fixture, await reservePort(), { productionIdentityFile });
+    const exitCode = await waitForExit(server, 8_000);
+    assert.notEqual(exitCode, 0, server.output());
+    assert.match(server.output(), /does not prove an exact import/);
+    assert.doesNotMatch(server.output(), /\[handmark\] listening/);
+    assert.deepEqual(readCutoverState(fixture.databasePath), databaseBefore);
+    assert.equal(readFileSync(sourcePath).byteLength, 0);
+  } finally {
+    if (server?.child.exitCode === null) {
+      server.child.kill('SIGKILL');
+      await waitForExit(server);
+    }
+    removeFixture(fixture);
+  }
+});
+
+test('ordinary production rejects deleted JSONL evidence despite its sealed JSONL receipt', async () => {
   const missingFixture = createFixture();
   const unsealedFixture = createFixture();
   const importedFixture = createFixture();
@@ -686,13 +726,13 @@ test('ordinary production requires a durable sealed receipt after legacy evidenc
     const importedBefore = readCutoverState(importedFixture.databasePath);
     unlinkSync(sourcePath);
 
-    importedServer = await startServer(importedFixture, {
+    importedServer = spawnServerProcess(importedFixture, await reservePort(), {
       productionIdentityFile: importedIdentity,
     });
-    const health = await localFetch(`${importedServer.baseUrl}/healthz`);
-    assert.equal(health.status, 200);
-    await stopServer(importedServer);
-    importedServer = undefined;
+    const importedExit = await waitForExit(importedServer, 8_000);
+    assert.notEqual(importedExit, 0, importedServer.output());
+    assert.match(importedServer.output(), /does not prove an exact import/);
+    assert.doesNotMatch(importedServer.output(), /\[handmark\] listening/);
     assert.deepEqual(readCutoverState(importedFixture.databasePath), importedBefore);
   } finally {
     for (const server of [missingServer, unsealedServer, importedServer]) {
@@ -733,7 +773,20 @@ function createFixture() {
 
 async function importLegacyApplications(sourcePath, databasePath) {
   const importer = await import(pathToFileURL(compiledImporter).href);
-  await importer.importApplicationsJsonl({ databasePath, sourcePath });
+  await importer.importApplicationsJsonl({
+    databasePath,
+    operationalRoot: path.dirname(path.dirname(sourcePath)),
+    sourcePath,
+  });
+}
+
+async function importEmptyLegacyAuthority(fixture) {
+  const importer = await import(pathToFileURL(compiledImporter).href);
+  await importer.importEmptyApplicationsAuthority({
+    databasePath: fixture.databasePath,
+    operationalRoot: fixture.root,
+    sourcePath: path.join(fixture.dataDir, 'applications.jsonl'),
+  });
 }
 
 async function createCanonicalDatabaseWithoutReceipt(fixture) {
@@ -1089,6 +1142,12 @@ function readCutoverState(databasePath) {
           `SELECT receipt_key, format_version, source_bytes, source_sha256, record_count,
                   ordered_records_sha256
            FROM application_import_receipts`,
+        )
+        .get(),
+      authority: database
+        .prepare(
+          `SELECT authority_key, receipt_key, authority_kind
+           FROM application_import_authorities`,
         )
         .get(),
       sequence: database

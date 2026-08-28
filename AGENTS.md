@@ -121,12 +121,16 @@ Important constraints:
   10,000-record/100 MiB logical ceiling, and bounded physical/journal storage. Routes never write
   around `server/src/application-service.ts` and `server/src/application-repository.ts`.
 - Ordinary production startup always requires an existing SQLite database with the sealed legacy
-  import receipt, including after `applications.jsonl` is intentionally removed under its approved
-  retention decision. While the JSONL evidence remains, the receipt's source byte count and
-  SHA-256 must also match that exact file. The target opens and hashes it only during startup as an
-  integrity witness; it is never the application store, a fallback reader, or a dual-write target.
-  The source must remain inside the operational root through a stable chain of real, non-symlink
-  parent directories; containment or parent-identity ambiguity fails closed.
+  import receipt and its sealed authority kind. The authority is either an exact legacy JSONL file
+  or the explicit, canonical absence of that file when the stopped legacy queue is honestly empty;
+  absence is never represented by a fabricated zero-byte JSONL. JSONL authority requires that file
+  to remain present and match the receipt's source byte count and SHA-256; deletion fails startup.
+  Empty-absence authority requires the path to remain absent; a later appearing JSONL also fails
+  startup. Evidence removal cannot be inferred from absence and therefore requires a future
+  explicit schema migration that durably records its approval before the JSONL may be removed. The
+  source or its proven absence is checked only during startup; it is never the application store,
+  a fallback reader, or a dual-write target. Its parent chain must remain contained, real,
+  non-symlinked, and identity-stable inside the operational root.
 - The framework-owned SQLite opener proves the complete private directory chain and pins the main
   database plus every required rollback-journal, WAL, and SHM identity before writable use. A clean
   WAL database instead proves that its unused rollback-journal path stays absent. It re-proves that
@@ -140,12 +144,17 @@ Important constraints:
 - Initial retention runs only after the HTTP listener binds successfully. An occupied port therefore
   exits without deleting retention-boundary records or changing the sealed receipt.
 - The target never dual-writes and never falls back to JSONL.
-- The compiled importer validates the complete bounded JSONL before publication, imports every row
-  transactionally, proves explicit sequence/IDs/timestamps/canonical hashes after reopening, keeps
-  the source unchanged, and safely recovers only its own identity-proven staging operation. Its
-  staging directory, database, and marker request their private modes at exclusive creation and
-  then prove those exact modes; the importer never widens permissions after allocation. The
-  documented one-time importer is an offline Node command, not the long-running server's sealed
+- The compiled importer requires one explicit authority mode. JSONL mode validates the complete
+  bounded file before publication and imports every row transactionally. Empty-authority mode pins
+  the already-existing source parent and proves the named JSONL remains absent throughout; it
+  creates no stand-in file. Both modes seal the authority kind with the receipt, prove the result
+  after reopening, and safely recover only their own identity-proven staging operation. Before any
+  database publication, the importer descriptor-pins the operational root and database-directory
+  chain. It never changes the operational root; it may only narrow owner-readable/writable/executable
+  descendant directories to mode `0700` through their open descriptors, and fails rather than
+  widening owner permissions. Its staging directory, database, and marker request their private
+  modes at exclusive creation and then prove those exact modes. The documented one-time importer
+  is an offline Node command, not the long-running server's sealed
   permission-model entrypoint: its private staged rollback-journal connection and immutable
   read-only reopen are bounded migration-only exceptions to the long-lived WAL opener because its
   crash-safe hard-link publication contract requires them. They close before activation and are

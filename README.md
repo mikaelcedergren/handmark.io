@@ -101,21 +101,34 @@ The compiled importer entrypoint is built and invoked explicitly:
 ```bash
 corepack pnpm build:server
 node server/dist/import-applications.js \
+  --operational-root /absolute/path/to/handmark.io \
   --source /absolute/path/to/applications.jsonl \
   --database /absolute/path/to/handmark.sqlite
 ```
 
+When the stopped legacy service has an honestly empty queue and the authoritative JSONL therefore
+does not exist, the runbook selects the separate `--empty-authority` form. That mode proves the
+path remains absent and seals that fact; it never creates a fake empty JSONL. A present zero-byte
+JSONL uses the ordinary JSONL form because present-file and absent-file authority are deliberately
+not interchangeable. The importer accepts only the canonical `applications.jsonl` path beside the
+target database, so another absent filename cannot be sealed as legacy authority.
+
 Do not point that command at operational data outside the authorised, stopped-daemon procedure.
 Ordinary production always requires an existing selected database with the sealed legacy import
-receipt, even after `applications.jsonl` is intentionally removed. While the JSONL remains, its
-exact byte count and SHA-256 must match that receipt, and its complete parent-directory chain must
-stay inside the operational root without symlinks or identity changes. The target reads it only at
-startup as an integrity witness; SQLite is the sole application store, with no JSONL fallback or
-dual write. The database directory chain and exact mode-`0600`, single-link database inode remain
-pinned through receipt verification, SQLite open, and runtime. Development, `test`, and isolated
-release validation may create fresh synthetic databases only through exclusive, no-follow
-preallocation before SQLite opens them. Initial retention starts only after the listener binds, so
-an occupied port cannot mutate records. Any failed proof exits before intake.
+receipt and matching authority kind. JSONL authority requires `applications.jsonl` to remain
+present and match its receipt's exact byte count and SHA-256; deleting it fails startup.
+Empty-absence authority requires that path to remain absent. Evidence removal requires a future
+explicit schema migration that durably records its approval; absence alone is never treated as
+approval. The complete source parent chain must stay inside the operational root without symlinks
+or identity changes. The target checks that authority only at startup; SQLite is the sole
+application store, with no JSONL fallback or dual write. Before publication, the importer proves
+the operational root and safely narrows only the required descendant database-directory chain to
+mode `0700`; it never widens permissions or changes the operational root. The database directory
+chain and exact mode-`0600`, single-link database inode remain pinned through receipt verification,
+SQLite open, and runtime. Development, `test`, and isolated release validation may create fresh
+synthetic databases only through exclusive, no-follow preallocation before SQLite opens them.
+Initial retention starts only after the listener binds, so an occupied port cannot mutate records.
+Any failed proof exits before intake.
 
 The importer, backup/restore, activation, verification, and rollback sequence is owned only by
 [`docs/application-storage-cutover.md`](docs/application-storage-cutover.md).

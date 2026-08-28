@@ -15,6 +15,8 @@ import {
   type ApplicationRecord,
 } from './application-record.js';
 import {
+  EMPTY_APPLICATION_AUTHORITY_SHA256,
+  EMPTY_APPLICATION_RECORDS_SHA256,
   APPLICATION_IMPORT_FORMAT_VERSION,
   insertApplicationImportReceipt,
   insertImportedApplication,
@@ -36,6 +38,7 @@ export const APPLICATION_IMPORT_MAX_RECORD_BYTES = 512 * 1024;
 export const APPLICATION_IMPORT_CHECKPOINTS = Object.freeze([
   'source_opened',
   'source_validated',
+  'database_directory_private',
   'temporary_created',
   'target_transaction_started',
   'record_inserted',
@@ -71,8 +74,9 @@ type ApplicationImportCode =
   | 'too_many_records';
 
 interface ImportOptions {
-  readonly sourcePath: string;
   readonly databasePath: string;
+  readonly operationalRoot: string;
+  readonly sourcePath: string;
 }
 
 interface ImportTestOptions {
@@ -89,18 +93,38 @@ interface ImportCheckpointDetails {
 }
 
 interface ResolvedImportOptions extends ImportOptions {
+  readonly directoryProofs: readonly DirectoryProof[];
   readonly parentDescriptor: number;
   readonly parentPath: string;
-  readonly parentSnapshot: FileSnapshot;
+  parentSnapshot: FileSnapshot;
   readonly stagingDirectoryPath: string;
 }
 
-interface ValidatedSource {
+interface ValidatedJsonlSource {
+  readonly authorityKind: 'legacy_jsonl_v1';
   readonly fileDescriptor: number;
   readonly filePath: string;
   readonly receipt: ApplicationImportReceipt;
   readonly records: readonly ApplicationRecord[];
   readonly snapshot: FileSnapshot;
+}
+
+interface ValidatedEmptyAuthority {
+  readonly authorityKind: 'legacy_empty_absence_v1';
+  readonly directoryDescriptor: number;
+  readonly directoryPath: string;
+  directorySnapshot: FileSnapshot;
+  readonly filePath: string;
+  readonly receipt: ApplicationImportReceipt;
+  readonly records: readonly [];
+}
+
+type ValidatedAuthority = ValidatedJsonlSource | ValidatedEmptyAuthority;
+
+interface DirectoryProof {
+  readonly descriptor: number;
+  readonly path: string;
+  snapshot: FileSnapshot;
 }
 
 interface FileSnapshot {
@@ -143,13 +167,14 @@ interface ImportStage {
 }
 
 interface StageMarker {
+  readonly authorityKind: ApplicationImportReceipt['authorityKind'];
   readonly databaseDev: string;
   readonly databaseIno: string;
   readonly databaseSha256: string;
   readonly databaseSize: string;
   readonly directoryDev: string;
   readonly directoryIno: string;
-  readonly formatVersion: 1;
+  readonly formatVersion: 2;
   readonly kind: 'handmark_application_import';
   readonly ownerPid: string;
   readonly parentDev: string;
@@ -217,13 +242,24 @@ const EMPTY_CHECKPOINT_DETAILS = Object.freeze({});
 export async function importApplicationsJsonl(
   options: ImportOptions,
 ): Promise<ApplicationImportReceipt> {
-  return runImport(options);
+  return runImport(options, 'legacy_jsonl_v1');
+}
+
+export async function importEmptyApplicationsAuthority(
+  options: ImportOptions,
+): Promise<ApplicationImportReceipt> {
+  return runImport(options, 'legacy_empty_absence_v1');
 }
 
 export async function importApplicationsJsonlForTest(
   options: ImportOptions,
   testOptions: ImportTestOptions,
 ): Promise<ApplicationImportReceipt> {
+  validateTestOptions(testOptions);
+  return runImport(options, 'legacy_jsonl_v1', testOptions.onCheckpoint);
+}
+
+function validateTestOptions(testOptions: ImportTestOptions): void {
   if (
     !testOptions ||
     typeof testOptions !== 'object' ||
@@ -236,15 +272,23 @@ export async function importApplicationsJsonlForTest(
       'Application importer test options must contain only onCheckpoint.',
     );
   }
-  return runImport(options, testOptions.onCheckpoint);
+}
+
+export async function importEmptyApplicationsAuthorityForTest(
+  options: ImportOptions,
+  testOptions: ImportTestOptions,
+): Promise<ApplicationImportReceipt> {
+  validateTestOptions(testOptions);
+  return runImport(options, 'legacy_empty_absence_v1', testOptions.onCheckpoint);
 }
 
 async function runImport(
   rawOptions: ImportOptions,
+  authorityKind: ApplicationImportReceipt['authorityKind'],
   onCheckpoint?: ImportTestOptions['onCheckpoint'],
 ): Promise<ApplicationImportReceipt> {
   let options: ResolvedImportOptions | undefined;
-  let source: ValidatedSource | undefined;
+  let source: ValidatedAuthority | undefined;
   let stage: ImportStage | undefined;
   let stageCanBeCleaned = false;
   let publishedTarget: StableDatabaseProof | undefined;
@@ -264,7 +308,16 @@ async function runImport(
 
   try {
     options = validateOptions(rawOptions);
-    source = openAndValidateSource(options.sourcePath, checkpoint);
+    source =
+      authorityKind === 'legacy_jsonl_v1'
+        ? openAndValidateSource(options.sourcePath, checkpoint)
+        : openAndValidateEmptyAuthority(options.sourcePath, checkpoint);
+    preparePrivateDatabaseDirectory(options);
+    if (source.authorityKind === 'legacy_empty_absence_v1') {
+      refreshEmptyAuthorityDirectoryProof(source);
+    }
+    checkpoint('database_directory_private');
+    assertAuthorityUnchanged(source);
     assertParentStable(options, 'target_changed');
 
     const recovery = recoverInterruptedOperation(options, source);
@@ -319,11 +372,11 @@ async function runImport(
         checkpoint('target_reopened', stageCheckpointDetails(stage));
         sealStageMarker(options, stage, source, proof);
         checkpoint('marker_durable', stageCheckpointDetails(stage));
-        assertSourceUnchanged(source);
+        assertAuthorityUnchanged(source);
         assertTargetSidecarsAbsent(options.databasePath, 'target_changed');
 
         checkpoint('before_publish', stageCheckpointDetails(stage));
-        assertSourceUnchanged(source);
+        assertAuthorityUnchanged(source);
         assertParentStable(options, 'target_changed');
         assertTargetAbsent(options.databasePath);
         assertTargetSidecarsAbsent(options.databasePath, 'target_changed');
@@ -350,14 +403,14 @@ async function runImport(
     captureCleanupError(cleanupErrors, 'staging cleanup', () => cleanupStage(options, stage));
   }
   if (source) {
-    captureCleanupError(cleanupErrors, 'source descriptor close', () =>
-      closeFileDescriptor(source.fileDescriptor),
-    );
+    captureCleanupError(cleanupErrors, 'source authority close', () => closeAuthority(source));
   }
   if (options) {
-    captureCleanupError(cleanupErrors, 'parent descriptor close', () =>
-      closeFileDescriptor(options.parentDescriptor),
-    );
+    for (const proof of [...options.directoryProofs].reverse()) {
+      captureCleanupError(cleanupErrors, 'database directory proof close', () =>
+        closeFileDescriptor(proof.descriptor),
+      );
+    }
   }
 
   if (primaryError !== undefined || cleanupErrors.length > 0) {
@@ -376,15 +429,30 @@ function validateOptions(options: ImportOptions): ResolvedImportOptions {
     typeof options.sourcePath !== 'string' ||
     options.sourcePath.length === 0 ||
     typeof options.databasePath !== 'string' ||
-    options.databasePath.length === 0
+    options.databasePath.length === 0 ||
+    typeof options.operationalRoot !== 'string' ||
+    options.operationalRoot.length === 0
   ) {
     throw new ApplicationImportError(
       'invalid_options',
       'Application import paths must be non-empty strings.',
     );
   }
-  const sourcePath = path.resolve(options.sourcePath);
-  const databasePath = path.resolve(options.databasePath);
+  for (const [label, value] of [
+    ['Application source path', options.sourcePath],
+    ['Application database path', options.databasePath],
+    ['Application operational root', options.operationalRoot],
+  ] as const) {
+    if (!path.isAbsolute(value) || path.normalize(value) !== value) {
+      throw new ApplicationImportError(
+        'invalid_options',
+        `${label} must be normalized and absolute.`,
+      );
+    }
+  }
+  const sourcePath = options.sourcePath;
+  const databasePath = options.databasePath;
+  const operationalRoot = options.operationalRoot;
   if (sourcePath === databasePath) {
     throw new ApplicationImportError(
       'invalid_options',
@@ -392,57 +460,187 @@ function validateOptions(options: ImportOptions): ResolvedImportOptions {
     );
   }
   const databaseDirectory = path.dirname(databasePath);
-  let directoryStats: fs.BigIntStats;
-  try {
-    directoryStats = fs.lstatSync(databaseDirectory, { bigint: true });
-  } catch (error) {
+  if (sourcePath !== path.join(databaseDirectory, 'applications.jsonl')) {
     throw new ApplicationImportError(
       'invalid_options',
-      'Application database directory must already exist.',
-      { cause: error },
+      'Application source must be the authoritative applications.jsonl beside the target database.',
     );
   }
-  if (!directoryStats.isDirectory()) {
-    throw new ApplicationImportError(
-      'invalid_options',
-      'Application database parent must be a directory.',
-    );
-  }
-  let parentDescriptor: number | undefined;
-  try {
-    parentDescriptor = fs.openSync(
-      databaseDirectory,
-      fs.constants.O_RDONLY | DIRECTORY_ONLY | NO_FOLLOW,
-    );
-    const parentSnapshot = fileSnapshot(fs.fstatSync(parentDescriptor, { bigint: true }));
-    if (!sameSnapshot(parentSnapshot, fileSnapshot(directoryStats))) {
-      throw new Error('Application database parent changed while it was opened.');
+  for (const [label, candidate] of [
+    ['Application source', sourcePath],
+    ['Application database', databasePath],
+  ] as const) {
+    const relative = path.relative(operationalRoot, candidate);
+    if (
+      !relative ||
+      path.isAbsolute(relative) ||
+      relative === '..' ||
+      relative.startsWith(`..${path.sep}`)
+    ) {
+      throw new ApplicationImportError(
+        'invalid_options',
+        `${label} must remain inside the operational root.`,
+      );
     }
-    return Object.freeze({
+  }
+  const relativeDatabaseDirectory = path.relative(operationalRoot, databaseDirectory);
+  if (
+    path.isAbsolute(relativeDatabaseDirectory) ||
+    relativeDatabaseDirectory === '..' ||
+    relativeDatabaseDirectory.startsWith(`..${path.sep}`)
+  ) {
+    throw new ApplicationImportError(
+      'invalid_options',
+      'Application database directory must remain inside the operational root.',
+    );
+  }
+  let directoryProofs: readonly DirectoryProof[] | undefined;
+  try {
+    directoryProofs = pinDatabaseDirectoryChain(operationalRoot, databaseDirectory);
+    const parent = directoryProofs.at(-1);
+    if (!parent) throw new Error('Application database directory proof is missing.');
+    return {
       databasePath,
-      parentDescriptor,
+      directoryProofs,
+      operationalRoot,
+      parentDescriptor: parent.descriptor,
       parentPath: databaseDirectory,
-      parentSnapshot,
+      parentSnapshot: parent.snapshot,
       sourcePath,
       stagingDirectoryPath: path.join(
         databaseDirectory,
         `.${path.basename(databasePath)}.import-stage`,
       ),
-    });
+    };
   } catch (error) {
-    if (parentDescriptor !== undefined) closeFileDescriptor(parentDescriptor);
+    if (directoryProofs) {
+      for (const proof of [...directoryProofs].reverse()) closeFileDescriptor(proof.descriptor);
+    }
     throw new ApplicationImportError(
       'invalid_options',
-      'Application database parent could not be pinned safely.',
+      'Application database directory chain could not be pinned safely.',
       { cause: error },
     );
+  }
+}
+
+function pinDatabaseDirectoryChain(
+  operationalRoot: string,
+  databaseDirectory: string,
+): readonly DirectoryProof[] {
+  const relative = path.relative(operationalRoot, databaseDirectory);
+  const paths = [
+    operationalRoot,
+    ...relative
+      .split(path.sep)
+      .filter(Boolean)
+      .reduce<string[]>((entries, segment) => {
+        entries.push(path.join(entries.at(-1) ?? operationalRoot, segment));
+        return entries;
+      }, []),
+  ];
+  const proofs: DirectoryProof[] = [];
+  try {
+    for (const directoryPath of paths) {
+      const pathStats = fs.lstatSync(directoryPath, { bigint: true });
+      if (
+        !pathStats.isDirectory() ||
+        pathStats.isSymbolicLink() ||
+        pathStats.uid !== BigInt(CURRENT_EFFECTIVE_UID) ||
+        fs.realpathSync.native(directoryPath) !== directoryPath
+      ) {
+        throw new Error(
+          'Application database ancestry must be current-user-owned real directories.',
+        );
+      }
+      const descriptor = fs.openSync(
+        directoryPath,
+        fs.constants.O_RDONLY | DIRECTORY_ONLY | NO_FOLLOW,
+      );
+      try {
+        const snapshot = fileSnapshot(fs.fstatSync(descriptor, { bigint: true }));
+        if (!sameSnapshot(snapshot, fileSnapshot(pathStats))) {
+          throw new Error('Application database directory changed while it was opened.');
+        }
+        proofs.push({ descriptor, path: directoryPath, snapshot });
+      } catch (error) {
+        closeFileDescriptor(descriptor);
+        throw error;
+      }
+    }
+    assertDatabaseDirectoryChainUnchanged(proofs);
+    return proofs;
+  } catch (error) {
+    for (const proof of proofs.reverse()) closeFileDescriptor(proof.descriptor);
+    throw error;
+  }
+}
+
+function preparePrivateDatabaseDirectory(options: ResolvedImportOptions): void {
+  assertDatabaseDirectoryChainUnchanged(options.directoryProofs);
+  if (options.directoryProofs.length === 1) {
+    const root = options.directoryProofs[0];
+    if (!root || !isPrivateOwnedDirectory(root.snapshot)) {
+      throw new ApplicationImportError(
+        'invalid_options',
+        'A database stored directly in the operational root requires that root to already be mode 0700.',
+      );
+    }
+  } else {
+    for (const proof of options.directoryProofs.slice(1)) {
+      const permissionBits = proof.snapshot.mode & 0o7777n;
+      if ((permissionBits & 0o700n) !== 0o700n) {
+        throw new ApplicationImportError(
+          'invalid_options',
+          `Application database directory cannot be made private without widening owner permissions: ${proof.path}`,
+        );
+      }
+      if (permissionBits !== BigInt(PRIVATE_DIRECTORY_MODE)) {
+        const before = proof.snapshot;
+        fs.fchmodSync(proof.descriptor, PRIVATE_DIRECTORY_MODE);
+        const descriptorAfter = fileSnapshot(fs.fstatSync(proof.descriptor, { bigint: true }));
+        const pathAfter = fileSnapshot(fs.lstatSync(proof.path, { bigint: true }));
+        if (
+          !sameFileIdentity(before, descriptorAfter) ||
+          !sameFileIdentity(before, pathAfter) ||
+          !sameSnapshot(descriptorAfter, pathAfter) ||
+          !isPrivateOwnedDirectory(descriptorAfter)
+        ) {
+          throw new Error(
+            'Application database directory changed while its private mode was applied.',
+          );
+        }
+        proof.snapshot = descriptorAfter;
+      }
+    }
+  }
+  assertDatabaseDirectoryChainUnchanged(options.directoryProofs);
+  const parent = options.directoryProofs.at(-1);
+  if (!parent || !isPrivateOwnedDirectory(parent.snapshot)) {
+    throw new Error('Application database parent is not an owned mode-0700 directory.');
+  }
+  options.parentSnapshot = parent.snapshot;
+}
+
+function assertDatabaseDirectoryChainUnchanged(proofs: readonly DirectoryProof[]): void {
+  for (const proof of proofs) {
+    const descriptor = fileSnapshot(fs.fstatSync(proof.descriptor, { bigint: true }));
+    const pathname = fileSnapshot(fs.lstatSync(proof.path, { bigint: true }));
+    if (
+      !sameDirectoryIdentity(descriptor, proof.snapshot) ||
+      !sameDirectoryIdentity(pathname, proof.snapshot) ||
+      !sameDirectoryIdentity(descriptor, pathname) ||
+      fs.realpathSync.native(proof.path) !== proof.path
+    ) {
+      throw new Error('Application database directory chain changed identity.');
+    }
   }
 }
 
 function openAndValidateSource(
   sourcePath: string,
   checkpoint: (name: ApplicationImportCheckpoint) => void,
-): ValidatedSource {
+): ValidatedJsonlSource {
   let pathStats: fs.BigIntStats;
   try {
     pathStats = fs.lstatSync(sourcePath, { bigint: true });
@@ -458,7 +656,12 @@ function openAndValidateSource(
       },
     );
   }
-  if (!pathStats.isFile() || pathStats.nlink !== 1n) {
+  if (
+    !pathStats.isFile() ||
+    pathStats.isSymbolicLink() ||
+    pathStats.nlink !== 1n ||
+    fs.realpathSync.native(sourcePath) !== sourcePath
+  ) {
     throw new ApplicationImportError(
       'source_invalid_type',
       'Application JSONL source must be a single-link regular file.',
@@ -501,6 +704,7 @@ function openAndValidateSource(
     }
     const records = parseSourceRecords(bytes);
     const receipt = Object.freeze({
+      authorityKind: 'legacy_jsonl_v1' as const,
       formatVersion: APPLICATION_IMPORT_FORMAT_VERSION,
       orderedRecordsSha256: orderedApplicationRecordHash(records),
       recordCount: records.length,
@@ -508,19 +712,81 @@ function openAndValidateSource(
       sourceSha256: createHash('sha256').update(bytes).digest('hex'),
     });
     const source = Object.freeze({
+      authorityKind: 'legacy_jsonl_v1' as const,
       fileDescriptor,
       filePath: sourcePath,
       receipt,
       records,
       snapshot,
     });
-    assertSourceUnchanged(source);
+    assertAuthorityUnchanged(source);
     checkpoint('source_validated');
-    assertSourceUnchanged(source);
+    assertAuthorityUnchanged(source);
     return source;
   } catch (error) {
     closeFileDescriptor(fileDescriptor);
     throw error;
+  }
+}
+
+function openAndValidateEmptyAuthority(
+  sourcePath: string,
+  checkpoint: (name: ApplicationImportCheckpoint) => void,
+): ValidatedEmptyAuthority {
+  assertPathAbsent(sourcePath, 'source_changed');
+  const directoryPath = path.dirname(sourcePath);
+  let directoryDescriptor: number | undefined;
+  try {
+    const pathStats = fs.lstatSync(directoryPath, { bigint: true });
+    if (
+      !pathStats.isDirectory() ||
+      pathStats.isSymbolicLink() ||
+      pathStats.uid !== BigInt(CURRENT_EFFECTIVE_UID) ||
+      fs.realpathSync.native(directoryPath) !== directoryPath
+    ) {
+      throw new Error(
+        'Empty application authority parent must be a current-user-owned real directory.',
+      );
+    }
+    directoryDescriptor = fs.openSync(
+      directoryPath,
+      fs.constants.O_RDONLY | DIRECTORY_ONLY | NO_FOLLOW,
+    );
+    const directorySnapshot = fileSnapshot(fs.fstatSync(directoryDescriptor, { bigint: true }));
+    if (!sameSnapshot(directorySnapshot, fileSnapshot(pathStats))) {
+      throw new Error('Empty application authority parent changed while it was opened.');
+    }
+    checkpoint('source_opened');
+    const receipt = Object.freeze({
+      authorityKind: 'legacy_empty_absence_v1' as const,
+      formatVersion: APPLICATION_IMPORT_FORMAT_VERSION,
+      orderedRecordsSha256: EMPTY_APPLICATION_RECORDS_SHA256,
+      recordCount: 0,
+      sourceBytes: 0,
+      sourceSha256: EMPTY_APPLICATION_AUTHORITY_SHA256,
+    });
+    const authority: ValidatedEmptyAuthority = {
+      authorityKind: 'legacy_empty_absence_v1',
+      directoryDescriptor,
+      directoryPath,
+      directorySnapshot,
+      filePath: sourcePath,
+      receipt,
+      records: Object.freeze([]),
+    };
+    directoryDescriptor = undefined;
+    assertAuthorityUnchanged(authority);
+    checkpoint('source_validated');
+    assertAuthorityUnchanged(authority);
+    return authority;
+  } catch (error) {
+    if (directoryDescriptor !== undefined) closeFileDescriptor(directoryDescriptor);
+    if (error instanceof ApplicationImportError) throw error;
+    throw new ApplicationImportError(
+      'source_changed',
+      'Empty application authority could not be pinned safely.',
+      { cause: error },
+    );
   }
 }
 
@@ -604,7 +870,32 @@ function parseSourceLine(
   records.push(record);
 }
 
-function assertSourceUnchanged(source: ValidatedSource): void {
+function assertAuthorityUnchanged(source: ValidatedAuthority): void {
+  if (source.authorityKind === 'legacy_empty_absence_v1') {
+    try {
+      const descriptorSnapshot = fileSnapshot(
+        fs.fstatSync(source.directoryDescriptor, { bigint: true }),
+      );
+      const pathSnapshot = fileSnapshot(fs.lstatSync(source.directoryPath, { bigint: true }));
+      if (
+        !sameDirectoryIdentity(descriptorSnapshot, source.directorySnapshot) ||
+        !sameDirectoryIdentity(pathSnapshot, source.directorySnapshot) ||
+        !sameDirectoryIdentity(descriptorSnapshot, pathSnapshot) ||
+        fs.realpathSync.native(source.directoryPath) !== source.directoryPath
+      ) {
+        throw new Error('empty authority parent changed');
+      }
+      assertPathAbsent(source.filePath, 'source_changed');
+      return;
+    } catch (error) {
+      if (error instanceof ApplicationImportError) throw error;
+      throw new ApplicationImportError(
+        'source_changed',
+        'Empty application authority changed during import.',
+        { cause: error },
+      );
+    }
+  }
   let reopened: number | undefined;
   try {
     const descriptorSnapshot = fileSnapshot(fs.fstatSync(source.fileDescriptor, { bigint: true }));
@@ -637,6 +928,41 @@ function assertSourceUnchanged(source: ValidatedSource): void {
   }
 }
 
+function refreshEmptyAuthorityDirectoryProof(source: ValidatedEmptyAuthority): void {
+  const before = source.directorySnapshot;
+  const descriptor = fileSnapshot(fs.fstatSync(source.directoryDescriptor, { bigint: true }));
+  const pathname = fileSnapshot(fs.lstatSync(source.directoryPath, { bigint: true }));
+  if (
+    !sameFileIdentity(before, descriptor) ||
+    !sameFileIdentity(before, pathname) ||
+    !sameDirectoryIdentity(descriptor, pathname) ||
+    fs.realpathSync.native(source.directoryPath) !== source.directoryPath
+  ) {
+    throw new ApplicationImportError(
+      'source_changed',
+      'Empty application authority parent changed while storage was made private.',
+    );
+  }
+  source.directorySnapshot = descriptor;
+}
+
+function closeAuthority(source: ValidatedAuthority): void {
+  closeFileDescriptor(
+    source.authorityKind === 'legacy_jsonl_v1' ? source.fileDescriptor : source.directoryDescriptor,
+  );
+}
+
+function sourceEvidenceSnapshot(source: ValidatedAuthority): FileSnapshot {
+  if (source.authorityKind === 'legacy_jsonl_v1') return source.snapshot;
+  return Object.freeze({
+    ...source.directorySnapshot,
+    ctimeNs: 0n,
+    mtimeNs: 0n,
+    nlink: 0n,
+    size: 0n,
+  });
+}
+
 function inspectExistingTarget(databasePath: string): ExistingTarget | undefined {
   let stats: fs.BigIntStats;
   try {
@@ -665,7 +991,7 @@ function inspectExistingTarget(databasePath: string): ExistingTarget | undefined
 
 function recoverInterruptedOperation(
   options: ResolvedImportOptions,
-  source: ValidatedSource,
+  source: ValidatedAuthority,
 ): RecoveryState | undefined {
   assertParentStable(options, 'recovery_conflict');
   let directoryStats: fs.BigIntStats;
@@ -874,7 +1200,7 @@ function createNewStage(options: ResolvedImportOptions): ImportStage {
 
 function createReplayStage(
   options: ResolvedImportOptions,
-  source: ValidatedSource,
+  source: ValidatedAuthority,
   target: ExistingTarget,
 ): ImportStage {
   if (!isPrivateOwnedFile(target.snapshot)) {
@@ -1064,7 +1390,7 @@ function removeOwnedEmptyStageDirectory(
 function buildImportedDatabase(
   options: ResolvedImportOptions,
   stage: ImportStage,
-  source: ValidatedSource,
+  source: ValidatedAuthority,
   checkpoint: (
     name: ApplicationImportCheckpoint,
     details?: Readonly<{ readonly intakeSequence?: number }>,
@@ -1118,7 +1444,7 @@ function buildImportedDatabase(
 function verifyStageDatabase(
   options: ResolvedImportOptions,
   stage: ImportStage,
-  source: ValidatedSource,
+  source: ValidatedAuthority,
   expectedLinks: bigint,
   targetSidecarCode?: Extract<
     ApplicationImportCode,
@@ -1168,7 +1494,7 @@ function verifyExactReplay(
   options: ResolvedImportOptions,
   stage: ImportStage,
   target: ExistingTarget,
-  source: ValidatedSource,
+  source: ValidatedAuthority,
 ): StableDatabaseProof {
   try {
     assertTargetSidecarsAbsent(options.databasePath, 'target_conflict');
@@ -1176,7 +1502,7 @@ function verifyExactReplay(
     const proof = verifyStageDatabase(options, stage, source, 2n, 'target_conflict');
     assertProofMatchesSnapshot(proof, target.snapshot);
     assertTargetMatchesProof(options.databasePath, proof, 2n, 'target_changed');
-    assertSourceUnchanged(source);
+    assertAuthorityUnchanged(source);
     assertTargetSidecarsAbsent(options.databasePath, 'target_conflict');
     return proof;
   } catch (error) {
@@ -1197,34 +1523,36 @@ function verifyExactReplay(
 function sealStageMarker(
   options: ResolvedImportOptions,
   stage: ImportStage,
-  source: ValidatedSource,
+  source: ValidatedAuthority,
   proof: StableDatabaseProof,
 ): void {
   if (stage.markerIdentity) throw new Error('Application staging marker is already sealed.');
   assertStageReadyForOpen(options, stage, stage.role === 'build' ? 1n : 2n);
   assertProofEqual(proofFromDescriptor(stage.databaseDescriptor), proof);
+  const sourceEvidence = sourceEvidenceSnapshot(source);
   const marker: StageMarker = Object.freeze({
+    authorityKind: source.authorityKind,
     databaseDev: proof.dev.toString(),
     databaseIno: proof.ino.toString(),
     databaseSha256: proof.digest,
     databaseSize: proof.size.toString(),
     directoryDev: stage.directoryIdentity.dev.toString(),
     directoryIno: stage.directoryIdentity.ino.toString(),
-    formatVersion: 1,
+    formatVersion: 2,
     kind: 'handmark_application_import',
     ownerPid: process.pid.toString(),
     parentDev: options.parentSnapshot.dev.toString(),
     parentIno: options.parentSnapshot.ino.toString(),
     role: stage.role,
-    sourceCtimeNs: source.snapshot.ctimeNs.toString(),
-    sourceDev: source.snapshot.dev.toString(),
-    sourceGid: source.snapshot.gid.toString(),
-    sourceIno: source.snapshot.ino.toString(),
-    sourceMode: source.snapshot.mode.toString(),
-    sourceMtimeNs: source.snapshot.mtimeNs.toString(),
+    sourceCtimeNs: sourceEvidence.ctimeNs.toString(),
+    sourceDev: sourceEvidence.dev.toString(),
+    sourceGid: sourceEvidence.gid.toString(),
+    sourceIno: sourceEvidence.ino.toString(),
+    sourceMode: sourceEvidence.mode.toString(),
+    sourceMtimeNs: sourceEvidence.mtimeNs.toString(),
     sourceReceipt: Object.freeze({ ...source.receipt }),
-    sourceSize: source.snapshot.size.toString(),
-    sourceUid: source.snapshot.uid.toString(),
+    sourceSize: sourceEvidence.size.toString(),
+    sourceUid: sourceEvidence.uid.toString(),
     targetName: path.basename(options.databasePath),
   });
   const bytes = stageMarkerBytes(marker);
@@ -1281,7 +1609,7 @@ function finalizePublishedTarget(
   options: ResolvedImportOptions,
   stage: ImportStage,
   proof: StableDatabaseProof,
-  source: ValidatedSource,
+  source: ValidatedAuthority,
   checkpoint: (name: ApplicationImportCheckpoint, details?: ImportCheckpointDetails) => void,
   emitCheckpoint: boolean,
 ): void {
@@ -1296,7 +1624,7 @@ function finalizePublishedTarget(
   assertTargetSidecarsAbsent(options.databasePath, 'target_changed');
   assertTargetMatchesProof(options.databasePath, proof, 2n, 'target_changed');
   assertProofEqual(proofFromDescriptor(stage.databaseDescriptor), proof);
-  assertSourceUnchanged(source);
+  assertAuthorityUnchanged(source);
   if (emitCheckpoint) checkpoint('final_source_verified', stageCheckpointDetails(stage));
   assertTargetSidecarsAbsent(options.databasePath, 'target_changed');
   assertParentStable(options, 'target_changed');
@@ -1314,13 +1642,13 @@ function finalizeExactReplay(
   options: ResolvedImportOptions,
   stage: ImportStage,
   proof: StableDatabaseProof,
-  source: ValidatedSource,
+  source: ValidatedAuthority,
 ): void {
   assertParentStable(options, 'target_changed');
   assertStageReadyForOpen(options, stage, 2n);
   assertTargetMatchesProof(options.databasePath, proof, 2n, 'target_changed');
   assertTargetSidecarsAbsent(options.databasePath, 'target_conflict');
-  assertSourceUnchanged(source);
+  assertAuthorityUnchanged(source);
   assertTargetSidecarsAbsent(options.databasePath, 'target_conflict');
   assertProofEqual(proofFromDescriptor(stage.databaseDescriptor), proof);
 
@@ -1553,6 +1881,21 @@ function assertTargetAbsent(databasePath: string): void {
   );
 }
 
+function assertPathAbsent(
+  filePath: string,
+  code: Extract<ApplicationImportCode, 'source_changed' | 'target_changed'>,
+): void {
+  try {
+    fs.lstatSync(filePath);
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return;
+    throw new ApplicationImportError(code, `${filePath} absence could not be proven.`, {
+      cause: error,
+    });
+  }
+  throw new ApplicationImportError(code, `${filePath} must remain absent.`);
+}
+
 function inspectRecoveryTarget(databasePath: string): FileSnapshot | undefined {
   try {
     const stats = fs.lstatSync(databasePath, { bigint: true });
@@ -1668,17 +2011,14 @@ function assertParentStable(
   code: Extract<ApplicationImportCode, 'cleanup_failed' | 'recovery_conflict' | 'target_changed'>,
 ): void {
   try {
-    const descriptorStats = fs.fstatSync(options.parentDescriptor, { bigint: true });
-    const pathStats = fs.lstatSync(options.parentPath, { bigint: true });
-    const descriptorSnapshot = fileSnapshot(descriptorStats);
-    const pathSnapshot = fileSnapshot(pathStats);
-    if (
-      !descriptorStats.isDirectory() ||
-      !pathStats.isDirectory() ||
-      !sameDirectoryIdentity(descriptorSnapshot, options.parentSnapshot) ||
-      !sameDirectoryIdentity(pathSnapshot, options.parentSnapshot)
-    ) {
-      throw new Error('Application database parent changed identity.');
+    assertDatabaseDirectoryChainUnchanged(options.directoryProofs);
+    for (const proof of options.directoryProofs.slice(1)) {
+      if (!isPrivateOwnedDirectory(proof.snapshot)) {
+        throw new Error('Application database directory lost its private mode.');
+      }
+    }
+    if (!isPrivateOwnedDirectory(options.parentSnapshot)) {
+      throw new Error('Application database parent lost its private mode.');
     }
   } catch (error) {
     if (error instanceof ApplicationImportError && error.code === code) throw error;
@@ -1714,7 +2054,7 @@ function sameFileIdentity(
 function isPrivateOwnedFile(value: Pick<FileSnapshot, 'mode' | 'uid'>): boolean {
   return (
     (value.mode & 0o170000n) === 0o100000n &&
-    (value.mode & 0o777n) === BigInt(PRIVATE_FILE_MODE) &&
+    (value.mode & 0o7777n) === BigInt(PRIVATE_FILE_MODE) &&
     value.uid === CURRENT_EFFECTIVE_UID
   );
 }
@@ -1724,7 +2064,7 @@ function isPrivateOwnedDirectory(
 ): boolean {
   return (
     (value.mode & 0o170000n) === 0o040000n &&
-    (value.mode & 0o777n) === BigInt(PRIVATE_DIRECTORY_MODE) &&
+    (value.mode & 0o7777n) === BigInt(PRIVATE_DIRECTORY_MODE) &&
     value.uid === CURRENT_EFFECTIVE_UID
   );
 }
@@ -1732,6 +2072,7 @@ function isPrivateOwnedDirectory(
 function stageMarkerBytes(marker: StageMarker): Buffer {
   return Buffer.from(
     `${JSON.stringify({
+      authorityKind: marker.authorityKind,
       databaseDev: marker.databaseDev,
       databaseIno: marker.databaseIno,
       databaseSha256: marker.databaseSha256,
@@ -1751,6 +2092,7 @@ function stageMarkerBytes(marker: StageMarker): Buffer {
       sourceMode: marker.sourceMode,
       sourceMtimeNs: marker.sourceMtimeNs,
       sourceReceipt: {
+        authorityKind: marker.sourceReceipt.authorityKind,
         formatVersion: marker.sourceReceipt.formatVersion,
         orderedRecordsSha256: marker.sourceReceipt.orderedRecordsSha256,
         recordCount: marker.sourceReceipt.recordCount,
@@ -1795,6 +2137,7 @@ function readStageMarker(markerPath: string): Readonly<{
       throw new Error('Application import marker has an invalid shape.');
     }
     const topKeys = [
+      'authorityKind',
       'databaseDev',
       'databaseIno',
       'databaseSha256',
@@ -1819,6 +2162,7 @@ function readStageMarker(markerPath: string): Readonly<{
       'targetName',
     ].toSorted();
     const receiptKeys = [
+      'authorityKind',
       'formatVersion',
       'orderedRecordsSha256',
       'recordCount',
@@ -1857,7 +2201,9 @@ function readStageMarker(markerPath: string): Readonly<{
     }
     const receipt = parsed.sourceReceipt;
     if (
-      parsed.formatVersion !== 1 ||
+      parsed.formatVersion !== 2 ||
+      (parsed.authorityKind !== 'legacy_jsonl_v1' &&
+        parsed.authorityKind !== 'legacy_empty_absence_v1') ||
       parsed.kind !== 'handmark_application_import' ||
       (parsed.role !== 'build' && parsed.role !== 'replay') ||
       BigInt(parsed.ownerPid as string) < 1n ||
@@ -1866,6 +2212,7 @@ function readStageMarker(markerPath: string): Readonly<{
       typeof parsed.databaseSha256 !== 'string' ||
       !/^[0-9a-f]{64}$/.test(parsed.databaseSha256) ||
       receipt.formatVersion !== APPLICATION_IMPORT_FORMAT_VERSION ||
+      receipt.authorityKind !== parsed.authorityKind ||
       typeof receipt.sourceBytes !== 'number' ||
       !Number.isSafeInteger(receipt.sourceBytes) ||
       receipt.sourceBytes < 0 ||
@@ -1875,18 +2222,25 @@ function readStageMarker(markerPath: string): Readonly<{
       typeof receipt.sourceSha256 !== 'string' ||
       !/^[0-9a-f]{64}$/.test(receipt.sourceSha256) ||
       typeof receipt.orderedRecordsSha256 !== 'string' ||
-      !/^[0-9a-f]{64}$/.test(receipt.orderedRecordsSha256)
+      !/^[0-9a-f]{64}$/.test(receipt.orderedRecordsSha256) ||
+      (receipt.authorityKind === 'legacy_empty_absence_v1' &&
+        (receipt.sourceBytes !== 0 ||
+          receipt.sourceSha256 !== EMPTY_APPLICATION_AUTHORITY_SHA256 ||
+          receipt.recordCount !== 0 ||
+          receipt.orderedRecordsSha256 !== EMPTY_APPLICATION_RECORDS_SHA256))
     ) {
       throw new Error('Application import marker values are invalid.');
     }
+    const authorityKind = parsed.authorityKind as ApplicationImportReceipt['authorityKind'];
     const marker: StageMarker = Object.freeze({
+      authorityKind,
       databaseDev: parsed.databaseDev as string,
       databaseIno: parsed.databaseIno as string,
       databaseSha256: parsed.databaseSha256,
       databaseSize: parsed.databaseSize as string,
       directoryDev: parsed.directoryDev as string,
       directoryIno: parsed.directoryIno as string,
-      formatVersion: 1,
+      formatVersion: 2,
       kind: 'handmark_application_import',
       ownerPid: parsed.ownerPid as string,
       parentDev: parsed.parentDev as string,
@@ -1899,6 +2253,7 @@ function readStageMarker(markerPath: string): Readonly<{
       sourceMode: parsed.sourceMode as string,
       sourceMtimeNs: parsed.sourceMtimeNs as string,
       sourceReceipt: Object.freeze({
+        authorityKind,
         formatVersion: APPLICATION_IMPORT_FORMAT_VERSION,
         orderedRecordsSha256: receipt.orderedRecordsSha256,
         recordCount: receipt.recordCount,
@@ -1928,24 +2283,27 @@ function readStageMarker(markerPath: string): Readonly<{
 function assertMarkerMatchesOperation(
   marker: StageMarker,
   options: ResolvedImportOptions,
-  source: ValidatedSource,
+  source: ValidatedAuthority,
   directory: FileSnapshot,
 ): void {
   const expectedReceipt = source.receipt;
+  const sourceEvidence = sourceEvidenceSnapshot(source);
   if (
+    marker.authorityKind !== source.authorityKind ||
     marker.targetName !== path.basename(options.databasePath) ||
     marker.parentDev !== options.parentSnapshot.dev.toString() ||
     marker.parentIno !== options.parentSnapshot.ino.toString() ||
     marker.directoryDev !== directory.dev.toString() ||
     marker.directoryIno !== directory.ino.toString() ||
-    marker.sourceCtimeNs !== source.snapshot.ctimeNs.toString() ||
-    marker.sourceDev !== source.snapshot.dev.toString() ||
-    marker.sourceGid !== source.snapshot.gid.toString() ||
-    marker.sourceIno !== source.snapshot.ino.toString() ||
-    marker.sourceMode !== source.snapshot.mode.toString() ||
-    marker.sourceMtimeNs !== source.snapshot.mtimeNs.toString() ||
-    marker.sourceSize !== source.snapshot.size.toString() ||
-    marker.sourceUid !== source.snapshot.uid.toString() ||
+    marker.sourceCtimeNs !== sourceEvidence.ctimeNs.toString() ||
+    marker.sourceDev !== sourceEvidence.dev.toString() ||
+    marker.sourceGid !== sourceEvidence.gid.toString() ||
+    marker.sourceIno !== sourceEvidence.ino.toString() ||
+    marker.sourceMode !== sourceEvidence.mode.toString() ||
+    marker.sourceMtimeNs !== sourceEvidence.mtimeNs.toString() ||
+    marker.sourceSize !== sourceEvidence.size.toString() ||
+    marker.sourceUid !== sourceEvidence.uid.toString() ||
+    marker.sourceReceipt.authorityKind !== expectedReceipt.authorityKind ||
     marker.sourceReceipt.formatVersion !== expectedReceipt.formatVersion ||
     marker.sourceReceipt.orderedRecordsSha256 !== expectedReceipt.orderedRecordsSha256 ||
     marker.sourceReceipt.recordCount !== expectedReceipt.recordCount ||

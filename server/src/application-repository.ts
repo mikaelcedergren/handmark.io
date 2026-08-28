@@ -59,14 +59,17 @@ export interface OpenApplicationRepositoryOptions {
   readonly onMaintenanceError?: (error: unknown) => void;
   readonly operationalRoot: string;
   readonly requireLegacyImportReceipt?: boolean;
-  readonly requiredLegacyImportSource?: LegacyApplicationImportSource;
+  readonly requiredLegacyImportAuthority?: LegacyApplicationImportAuthority;
   readonly scheduleTimer?: (callback: () => void, delayMs: number) => MaintenanceTimer;
 }
 
-export interface LegacyApplicationImportSource {
-  readonly sourceBytes: number;
-  readonly sourceSha256: string;
-}
+export type LegacyApplicationImportAuthority =
+  | Readonly<{ readonly kind: 'absent' }>
+  | Readonly<{
+      readonly kind: 'present_jsonl';
+      readonly sourceBytes: number;
+      readonly sourceSha256: string;
+    }>;
 
 export interface ApplicationRepository {
   append(record: ApplicationRecord, acceptedAt: number): number | undefined;
@@ -99,7 +102,7 @@ export function openApplicationRepository({
   onMaintenanceError = (error) => console.error('[handmark] application retention failed', error),
   operationalRoot,
   requireLegacyImportReceipt = false,
-  requiredLegacyImportSource,
+  requiredLegacyImportAuthority,
   scheduleTimer = (callback, delayMs) => setTimeout(callback, delayMs),
 }: OpenApplicationRepositoryOptions): ApplicationRepository {
   if (
@@ -109,7 +112,10 @@ export function openApplicationRepository({
   ) {
     throw new Error('Application repository callbacks must be functions.');
   }
-  const receiptRequired = requireLegacyImportReceipt || requiredLegacyImportSource !== undefined;
+  if (requiredLegacyImportAuthority) {
+    assertLegacyImportAuthority(requiredLegacyImportAuthority);
+  }
+  const receiptRequired = requireLegacyImportReceipt || requiredLegacyImportAuthority !== undefined;
   let writableReceipt: ApplicationImportReceipt | undefined;
   let owned: OwnedSqliteDatabase;
   try {
@@ -125,7 +131,7 @@ export function openApplicationRepository({
           beforeWrite(database) {
             writableReceipt = assertRequiredLegacyImportReceiptForMigration(
               database,
-              requiredLegacyImportSource,
+              requiredLegacyImportAuthority,
             );
             onOpenCheckpoint('receipt_verified');
           },
@@ -153,7 +159,7 @@ export function openApplicationRepository({
   try {
     if (writableReceipt) {
       migrateApplicationSchemaWithLegacyReceipt(database, writableReceipt);
-      assertRequiredLegacyImportReceipt(database, requiredLegacyImportSource);
+      assertRequiredLegacyImportReceipt(database, requiredLegacyImportAuthority);
     } else {
       migrateApplicationSchema(database);
     }
@@ -438,48 +444,72 @@ function assertEpochMilliseconds(value: number, label: string): void {
 
 function assertRequiredLegacyImportReceipt(
   database: SyncSqliteDatabase,
-  source: LegacyApplicationImportSource | undefined,
+  authority: LegacyApplicationImportAuthority | undefined,
 ): void {
   const receipt = readVerifiedLegacyApplicationImportReceipt(database);
   if (!receipt) {
     throw new Error('Selected SQLite database does not contain a sealed legacy import receipt.');
   }
-  if (
-    source &&
-    (receipt.sourceBytes !== source.sourceBytes || receipt.sourceSha256 !== source.sourceSha256)
-  ) {
-    throw new Error(
-      'Selected SQLite database does not prove an exact import of the legacy application source.',
-    );
-  }
+  assertReceiptMatchesAuthority(receipt, authority);
 }
 
 function assertRequiredLegacyImportReceiptForMigration(
   database: ReadonlySyncSqliteDatabase,
-  source: LegacyApplicationImportSource | undefined,
+  authority: LegacyApplicationImportAuthority | undefined,
 ): ApplicationImportReceipt {
   const receipt = readMigrationSafeLegacyApplicationImportReceipt(database);
   if (!receipt) {
     throw new Error('Selected SQLite database does not contain a sealed legacy import receipt.');
   }
-  if (
-    source &&
-    (receipt.sourceBytes !== source.sourceBytes || receipt.sourceSha256 !== source.sourceSha256)
-  ) {
+  assertReceiptMatchesAuthority(receipt, authority);
+  return receipt;
+}
+
+function assertReceiptMatchesAuthority(
+  receipt: ApplicationImportReceipt,
+  authority: LegacyApplicationImportAuthority | undefined,
+): void {
+  if (!authority) return;
+  const matches =
+    authority.kind === 'absent'
+      ? receipt.authorityKind === 'legacy_empty_absence_v1'
+      : receiptMatchesPresentSource(receipt, authority);
+  if (!matches) {
     throw new Error(
       'Selected SQLite database does not prove an exact import of the legacy application source.',
     );
   }
-  return receipt;
 }
 
-function assertLegacyImportSource(source: LegacyApplicationImportSource): void {
+function receiptMatchesPresentSource(
+  receipt: ApplicationImportReceipt,
+  authority: Extract<LegacyApplicationImportAuthority, { readonly kind: 'present_jsonl' }>,
+): boolean {
+  return (
+    receipt.authorityKind === 'legacy_jsonl_v1' &&
+    receipt.sourceBytes === authority.sourceBytes &&
+    receipt.sourceSha256 === authority.sourceSha256
+  );
+}
+
+function assertLegacyImportAuthority(authority: LegacyApplicationImportAuthority): void {
+  if (authority.kind === 'absent') {
+    if (Object.keys(authority).length !== 1) {
+      throw new Error('Absent legacy application authority must contain only its kind.');
+    }
+    return;
+  }
   if (
-    !Number.isSafeInteger(source.sourceBytes) ||
-    source.sourceBytes < 0 ||
-    !/^[0-9a-f]{64}$/.test(source.sourceSha256)
+    authority.kind !== 'present_jsonl' ||
+    Object.keys(authority).length !== 3 ||
+    !Object.hasOwn(authority, 'kind') ||
+    !Object.hasOwn(authority, 'sourceBytes') ||
+    !Object.hasOwn(authority, 'sourceSha256') ||
+    !Number.isSafeInteger(authority.sourceBytes) ||
+    authority.sourceBytes < 0 ||
+    !/^[0-9a-f]{64}$/.test(authority.sourceSha256)
   ) {
-    throw new Error('Legacy application import source proof is invalid.');
+    throw new Error('Legacy application import authority proof is invalid.');
   }
 }
 
