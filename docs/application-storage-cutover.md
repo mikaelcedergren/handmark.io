@@ -1,15 +1,16 @@
 # Application storage cutover
 
-Status: **maintenance boundary entered; data cutover not run**. The authorised 2026-08-28
-maintenance batch already unloaded `com.handmark.server`, removed its conventional installed
-plist, and proved launchd status `113` with port `3000` closed. It did not inspect the operational
-queue, create `handmark.sqlite`, import data, change the backup registry, select a release, install
-the target definition, or start the compiled server. The deleted installed plist was not captured
-byte-for-byte. The tracked historical legacy template remains a reviewed recovery input, but it is
-not evidence of the deleted installed file's exact bytes. Never describe it as such.
+Status: **historical — completed one-time migration procedure**. Do not rerun this document as a
+current deployment checklist or use it to infer live state. Exact dates, releases, receipts,
+authorisations, and runtime evidence live only in
+[`WEB-ARCHITECTURE-MIGRATION.md`](../../WEB-ARCHITECTURE-MIGRATION.md). This document remains the
+durable record of Handmark's data-authority transition, safety design, and rollback boundaries.
 
-This procedure resumes from that honest stopped state and moves the legacy queue authority to the
-compiled server. Source completion alone does not perform any remaining operational step.
+The deleted installed legacy plist was not captured byte-for-byte. The tracked historical legacy
+template remains a reviewed recovery input, but it is not evidence of the deleted installed file's
+exact bytes. Never describe it as such. Sections 0–6 below preserve the historical execution order;
+routine releases use the shared server standard, while the rollback and evidence rules remain
+binding.
 
 The shared release, backup, health, and rollback contracts are owned by
 [`SERVER-STANDARD.md`](../../SERVER-STANDARD.md). This file owns only the Handmark data cutover.
@@ -623,10 +624,10 @@ the same final immutable release. Any registry, source-gate, installation, backu
 whole-bundle, receipt-parity, witness, or non-mutation failure keeps the gate blocked and intake
 offline.
 
-## 6. Select and start the compiled pair
+## 6. Historical selection and bootstrap sequence
 
-The conventional installed plist is currently absent, and no byte-exact copy of its deleted legacy
-bytes exists. Before selection, validate that the separately tracked
+At the historical selection boundary, the conventional installed plist was absent and no
+byte-exact copy of its deleted legacy bytes existed. The separately tracked
 `launchd/com.handmark.server.target.plist` points to:
 
 ```text
@@ -640,8 +641,8 @@ root containing only `HANDMARK_PASSWORD` and `SESSION_SECRET`. The compiled targ
 private keys and never reads legacy `.env` as a fallback.
 
 The preserved operational `.env` belongs to the historical MJS recovery input. Keep it unchanged
-through the documented rollback window; the service is currently absent, and this file is not a
-target template or a second source for the compiled server.
+through the documented rollback window; this file is not a target template or a second source for
+the compiled server.
 
 Use the recorded browser and server candidate IDs from step 0. Preview the pair, then apply the
 offline selection while the Handmark role and conventional installed plist remain absent:
@@ -871,8 +872,7 @@ service/empty-queue determination, repeated absence proof, canonical receipt, re
 release evidence. The source path must remain absent; never create a file later to make the
 evidence look like the JSONL case.
 
-Operational cutover completion requires the final authority proof, every importer and verifier
-receipt, database parity, disposable and selected extracted restores, JSONL witness coverage when
-applicable, release identity, health, backup, and public verification evidence in the architecture
-migration ledger. The source-only architecture phase records these as explicitly deferred entry
-gates; it does not perform or claim them.
+The completed operational cutover's final authority proof, importer and verifier receipts, database
+parity, disposable and selected extracted restores, JSONL witness coverage when applicable,
+release identity, health, backup, and public verification evidence belong only in the architecture
+migration ledger. This historical procedure does not duplicate or supersede that evidence.

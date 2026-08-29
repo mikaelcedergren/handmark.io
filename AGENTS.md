@@ -57,8 +57,8 @@ pnpm dev
 
 That command uses the reserved development port `4230` and `.run/dev/data`; it must not read or
 write production `data/`. `pnpm start` is the canonical compiled entrypoint after `pnpm build`, but
-do not start it casually on the Mac mini because `3000` remains Handmark's reserved production
-port even while its service is offline for migration.
+do not start it casually on the Mac mini because `3000` is Handmark's reserved production port and
+ordinary operation uses the selected service-release flow.
 
 Browser publication for a change proved browser-only remains:
 
@@ -66,42 +66,44 @@ Browser publication for a change proved browser-only remains:
 node ../server-ops/bin/site-release.mjs --site handmark --browser-only --apply
 ```
 
-Browser-only publication does not select or restart a server release. A change that can affect both
-uses the paired transaction. The shared browser/server release, restart, identity, and rollback
-contracts are owned by
+Browser-only publication does not select or restart a server release. A change proved server-only
+uses the shared server-release flow. A change that affects both closures, or whose closure remains
+uncertain, uses the paired transaction. The shared browser/server release, restart, identity, and
+rollback contracts are owned by
 [`SERVER-STANDARD.md`](../SERVER-STANDARD.md); the Handmark application-data procedure is
 [`docs/application-storage-cutover.md`](docs/application-storage-cutover.md).
 
-### Operational selection during migration
+### Production selection and legacy evidence
 
-The source target above is implemented but **not selected in production yet**. The authorised
-2026-08-28 maintenance boundary already unloaded `com.handmark.server`, removed its conventional
-installed plist, proved launchctl status `113`, and proved port `3000` closed. No application data
-was inspected or imported, no target database was created, and no release was selected. The last
-runtime used `node server/index.mjs`, `data/applications.jsonl`, and legacy `.env`; those files and
-the tracked historical launchd template remain recovery/cutover inputs, not live service state.
-The deleted installed plist was not captured byte-for-byte, so the tracked template must never be
-described as an exact installed-file rollback. `launchd/com.handmark.server.target.plist` is the
-separately validated immutable-server target; `bin/install-server-daemon --check` validates both
-tracked definitions without installing, unloading, loading, or restarting anything. `--apply`
-fails closed until the role remains unloaded, the immutable server release is selected, and the
-private target files exist. Run it directly as `cortex`, never through `sudo`. It delegates the
-only definition write to the shared server-ops LaunchDaemon installer after shared server-release
-status authenticates the selected closure, installs only the definition, and still never loads or
-restarts the service. The compiled target never reads legacy `.env` as a fallback.
+The supported production target is the selected immutable `current-server` artifact executed by
+`com.handmark.server`. Source files and tracked definitions never prove what is selected, installed,
+or running; exact operational evidence lives only in the root
+[`WEB-ARCHITECTURE-MIGRATION.md`](../WEB-ARCHITECTURE-MIGRATION.md).
 
-Source work must not inspect operational applications, create `data/handmark.sqlite`, alter the
+`server/index.mjs`, `data/applications.jsonl`, legacy `.env`, and the tracked historical launchd
+template are legacy recovery and migration evidence, not the target runtime. The deleted installed
+legacy plist was not captured byte-for-byte, so the tracked template must never be described as an
+exact installed-file rollback. `launchd/com.handmark.server.target.plist` is the validated
+immutable-server target. `bin/install-server-daemon --check` validates both tracked definitions
+without installing, unloading, loading, or restarting anything. `--apply` requires the role to be
+unloaded, an immutable server release selected, and the private target files present. Run it
+directly as `cortex`, never through `sudo`. It delegates the only definition write to the shared
+server-ops LaunchDaemon installer after shared server-release status authenticates the selected
+closure; it never loads or restarts the service. The compiled target never reads legacy `.env` as a
+fallback.
+
+Ordinary source work must not inspect or modify operational applications or SQLite state, alter the
 backup registry, select a server release, or restart the daemon. Keep `HOST=127.0.0.1`; public
 traffic reaches nginx first.
 
 ## Hosting and domain reality
 
-Handmark's HTTPS hostnames and nginx route remain configured on the shared static-IP path, but the
-backend is intentionally offline at the current migration boundary. The path itself (static IP,
-router forwarding, nginx as the only public gateway, the nginx include model) is owned by the root
-docs — see the root `AGENTS.md` ("Static IP state") and `GO-LIVE.md`. Once selected and bootstrapped,
-daemon `com.handmark.server` serves the app locally at `127.0.0.1:3000`; repo routing values are in
-`DOMAIN_SETUP.md`. Do not interrupt existing servers.
+Handmark's HTTPS hostnames and nginx route use the shared static-IP path. The path itself (static
+IP, router forwarding, nginx as the only public gateway, and the nginx include model) is owned by
+the root docs — see the root `AGENTS.md` ("Static IP state") and `GO-LIVE.md`. The selected
+`com.handmark.server` service targets `127.0.0.1:3000`; repo routing values are in
+`DOMAIN_SETUP.md`, while current runtime evidence remains in the root migration ledger. Do not
+interrupt existing servers.
 
 Important constraints:
 
@@ -116,8 +118,8 @@ Important constraints:
 - Target server secrets belong in `.env.web`, never in committed files. The file may contain only
   `HANDMARK_PASSWORD` and `SESSION_SECRET` and must be one owned mode-`0600` regular file.
 - `.env.web.example` documents the compiled target's private keys. The existing `.env.example` and
-  preserved operational `.env` belong only to the historical legacy recovery input; the legacy
-  service is currently absent. Do not make either file a target-server fallback.
+  preserved operational `.env` belong only to the historical legacy recovery input. Do not make
+  either file a target-server fallback.
 - `data/applications.jsonl` and `data/handmark.sqlite*` are operational application data. Never
   inspect, copy into fixtures, or commit them.
 - Target intake is SQLite with explicit migrations, foreign keys, WAL, a busy timeout, monotonic
@@ -243,12 +245,11 @@ behaviour.
 - `server/src/application-*.ts` — validation, service, SQLite repository/schema, importer, and
   cutover interlock.
 - `server/index.mjs`, `server/application-store.mjs`, and `server/request-limiter.mjs` — historical
-  legacy recovery inputs from the last runtime; not the target source or a currently running
-  service.
+  legacy recovery inputs; never the target source.
 - `launchd/com.handmark.server.plist` — tracked historical legacy template and reviewed recovery
   input; it is not a byte-exact copy of the deleted installed definition.
 - `launchd/com.handmark.server.target.plist` and `bin/install-server-daemon` — fail-closed target
-  definition and definition-only installer for the authorised immutable-server cutover.
+  definition and definition-only installer for selected immutable server releases.
 - `src/app/app.component.html` — protected sales page template.
 - `src/app/app.component.ts` — menu and application submission behavior.
 - `public/login.html` — historical legacy gate page; target gate HTML comes from
@@ -267,7 +268,7 @@ behaviour.
 - `tests/e2e/handmark.spec.cjs` — Playwright verification.
 - `ops/handmark.nginx.conf.example` — non-installable pointer to shared nginx ownership and
   Handmark-specific values.
-- `DOMAIN_SETUP.md` — Handmark-specific routing and operational-selection record.
+- `DOMAIN_SETUP.md` — Handmark-specific routing values and verification contract.
 
 ## Application flow notes
 

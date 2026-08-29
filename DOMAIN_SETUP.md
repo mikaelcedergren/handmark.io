@@ -15,24 +15,24 @@ server-wide facts here.
 - Health path: `/healthz`
 - Canonical application origin: `APP_BASE_URL=https://handmark.io`
 - Active nginx file: `/opt/homebrew/etc/nginx/servers/handmark.io.conf`
-- Public routing status: HTTPS and nginx configured for both hostnames; backend intentionally
-  offline at the current migration boundary
+- Routing contract: HTTPS and nginx for both hostnames; runtime evidence belongs only in the root
+  migration ledger
 
 The tracked [`ops/handmark.nginx.conf.example`](ops/handmark.nginx.conf.example) is a pointer to the
 shared config ownership, not an installable replacement for the active file. Do not edit unrelated
 nginx blocks or interrupt existing services while working on Handmark.
 
-## Runtime selection
+## Runtime contract
 
-The authorised 2026-08-28 maintenance boundary unloaded `com.handmark.server`, removed its
-conventional installed plist, proved launchctl status `113`, and proved port `3000` closed. The
-last runtime used the legacy `node server/index.mjs` command and JSONL intake. The compiled
-TypeScript/SQLite server is source-complete but remains unselected until the separately authorised
-procedure in [`docs/application-storage-cutover.md`](docs/application-storage-cutover.md) passes.
-No data import, registry switch, release selection, or target bootstrap has occurred. A source build
-does not change this operational state.
+The supported service is `com.handmark.server` executing the selected immutable compiled
+TypeScript server against SQLite. The historical `node server/index.mjs` command, JSONL writer, and
+legacy definition remain recovery and migration evidence only; they are not the target runtime.
+The target definition and its definition-only installer are described in [`AGENTS.md`](AGENTS.md).
+Source files and tracked definitions never prove live state. Exact selection, installation,
+bootstrap, and verification evidence lives only in
+[`../WEB-ARCHITECTURE-MIGRATION.md`](../WEB-ARCHITECTURE-MIGRATION.md).
 
-## Verify the route after target bootstrap
+## Verify the route
 
 The active nginx config is:
 
@@ -45,16 +45,14 @@ curl -I https://handmark.io
 curl -I https://www.handmark.io
 ```
 
-At the current stopped boundary these requests do not prove an application response because the
-registered upstream has no listener. Expected result only after an authorised target bootstrap:
+Expected Handmark behavior before login:
 
 ```text
 HTTP 302
 Location: /login
 ```
 
-The preserved legacy `.env` belongs only to historical MJS recovery input; no Handmark daemon is
-currently loaded. The compiled target reads `HANDMARK_PASSWORD` only from the owned mode-`0600`
-`.env.web` described in
+The preserved legacy `.env` belongs only to historical MJS recovery input. The compiled target
+reads `HANDMARK_PASSWORD` only from the owned mode-`0600` `.env.web` described in
 [`docs/application-storage-cutover.md`](docs/application-storage-cutover.md); it never falls back to
 legacy `.env`. Do not put the password in launchd, nginx, docs, or tests.

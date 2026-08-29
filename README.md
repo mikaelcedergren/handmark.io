@@ -22,26 +22,25 @@ The permanent family architecture is owned by
 [`WEB-ARCHITECTURE.md`](../WEB-ARCHITECTURE.md). Handmark-specific working rules are in
 [`AGENTS.md`](AGENTS.md).
 
-## Operational status
+## Production runtime and evidence
 
-The target source architecture is implemented but has **not been selected in production**. The
-authorised 2026-08-28 maintenance boundary already unloaded `com.handmark.server`, removed its
-conventional installed plist, proved launchctl status `113`, and proved port `3000` closed. It did
-not inspect or import application data, create the target database, change backup authority, or
-select a release. The legacy JSONL or its proved empty absence remains authoritative until the
-separately authorised import, backup/restore proof, server-release selection, and first bootstrap
-all complete.
+The supported production runtime is the selected immutable compiled server backed by
+`data/handmark.sqlite`. Source files and tracked service definitions are configuration evidence,
+not proof of what is selected, installed, or running. Exact import, backup, cutover, release, and
+runtime evidence lives only in the root
+[`WEB-ARCHITECTURE-MIGRATION.md`](../WEB-ARCHITECTURE-MIGRATION.md).
 
-Do not inspect live application data, create the production SQLite target, remove the legacy files,
-change launchd, or claim the migration ran as part of ordinary source work. The exact future
-procedure is [`docs/application-storage-cutover.md`](docs/application-storage-cutover.md).
+Do not inspect live application data, create or replace the production SQLite target, remove legacy
+evidence, or change launchd as part of ordinary source work. The completed one-time migration
+procedure and its durable rollback boundaries are retained in
+[`docs/application-storage-cutover.md`](docs/application-storage-cutover.md).
 The tracked `launchd/com.handmark.server.plist` is a historical legacy recovery input, not a
 byte-exact copy of the deleted installed definition;
-`launchd/com.handmark.server.target.plist` is the separately validated immutable-server target.
+`launchd/com.handmark.server.target.plist` is the validated immutable-server target.
 `bin/install-server-daemon --check` is non-mutating, while `--apply` can install only the target
-definition after the stopped-service, selected-release, private-file, and database preconditions
-pass. Run the applied form directly as `cortex`, never through `sudo`. The write is delegated to the
-shared server-ops LaunchDaemon-definition transaction after the shared server-release status has
+definition after the unloaded-service, selected-release, private-file, and database preconditions
+pass. Run the applied form directly as `cortex`, never through `sudo`. The write is delegated to
+the shared server-ops LaunchDaemon-definition transaction after shared server-release status has
 authenticated the selected closure; neither mode loads or restarts the service.
 
 ## Review and pricing model
@@ -79,8 +78,8 @@ pnpm check
 
 `pnpm start` is the compiled production entrypoint and expects a completed build and an appropriate
 release/runtime environment. On the Mac mini, use it only through the authorised server-release
-flow; port `3000` remains reserved for Handmark even while its backend is offline. In ordinary
-production, its only private runtime file is an owned mode-`0600` `.env.web` containing
+flow; port `3000` remains reserved for Handmark. In ordinary production, its only private runtime
+file is an owned mode-`0600` `.env.web` containing
 `HANDMARK_PASSWORD` and `SESSION_SECRET`, documented without secrets in
 [`.env.web.example`](.env.web.example). The existing `.env.example` and preserved operational
 `.env` belong solely to the historical legacy recovery input; the compiled target never reads
@@ -155,8 +154,7 @@ pre-activation proof, not a runtime database opener.
 ## Domain, hosting, and releases
 
 Handmark's HTTPS hostnames and nginx route remain configured at `handmark.io` and
-`www.handmark.io`, while the backend is intentionally offline at the current migration boundary.
-The repo-specific target, daemon label, and active nginx file are recorded in
+`www.handmark.io`. The repo-specific target, daemon label, and active nginx file are recorded in
 [`DOMAIN_SETUP.md`](DOMAIN_SETUP.md). Shared network, release, restart, health, and rollback rules
 stay in [`GO-LIVE.md`](../GO-LIVE.md) and [`SERVER-STANDARD.md`](../SERVER-STANDARD.md).
 
@@ -166,9 +164,10 @@ Browser assets for a change proved browser-only use the registered atomic releas
 node ../server-ops/bin/site-release.mjs --site handmark --browser-only --apply
 ```
 
-That command does not publish, select, or restart the compiled server. A change that can affect
-both sides uses the paired transaction. The target cutover remains blocked by the migration ledger
-and requires the separate authorised data and operational flow.
+That command does not publish, select, or restart the compiled server. A change proved server-only
+uses the shared server-release flow. A change that affects both closures, or whose closure remains
+uncertain, uses the paired transaction. Exact current release and runtime evidence stays in the
+root migration ledger.
 
 ## Real payment next step
 
