@@ -33,7 +33,7 @@ test('target LaunchDaemon selects the immutable server without embedding secrets
   assert.doesNotMatch(source, /<key>(?:HANDMARK_PASSWORD|SESSION_SECRET)<\/key>/);
 });
 
-test('daemon installer is check-first, copy-safe, definition-only, and cutover-gated', (t) => {
+test('daemon installer is check-first, copy-safe, definition-only, and activation-gated', (t) => {
   const source = readFileSync(installer, 'utf8');
   assert.match(source, /readonly INSTALL_ROOT="\/Users\/cortex\/Development\/handmark\.io"/);
   assert.match(source, /MODE="check"/);
@@ -72,9 +72,10 @@ test('daemon installer is check-first, copy-safe, definition-only, and cutover-g
   }
 
   const direct = execFileSync(installer, [], { cwd: repoRoot, encoding: 'utf8' });
+  assert.match(direct, /VALID: tracked Handmark legacy evidence and immutable-server definition/);
   assert.match(
     direct,
-    /VALID: selected Handmark legacy definition and future immutable-server definition/,
+    /application-storage-cutover\.md is completed historical evidence; current runtime state belongs in the root migration ledger/,
   );
   assert.match(direct, /No service definition was installed/);
   const explicit = execFileSync(installer, ['--check'], {

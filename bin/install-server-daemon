@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Validate the selected legacy definition and the future immutable-server definition. Applying the
-# target never unloads, loads, or restarts Handmark; those are separate authorised cutover gates.
+# Validate tracked legacy evidence and the immutable-server definition. Applying a definition never
+# unloads, loads, or restarts Handmark; future activation remains separately authorised.
 set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -112,8 +112,8 @@ if [[ "$MODE" == "check" ]]; then
   "$NODE" "$SHARED_DEFINITION_INSTALLER" \
     --check \
     --definition "$LABEL=$TARGET_TEMPLATE"
-  echo "VALID: selected Handmark legacy definition and future immutable-server definition"
-  echo "The target remains gated by docs/application-storage-cutover.md."
+  echo "VALID: tracked Handmark legacy evidence and immutable-server definition"
+  echo "docs/application-storage-cutover.md is completed historical evidence; current runtime state belongs in the root migration ledger."
   exit 0
 fi
 
@@ -252,4 +252,4 @@ validate_definitions "$LEGACY_TEMPLATE" "$STAGED_TEMPLATE"
 "$NODE" "$SHARED_DEFINITION_INSTALLER" \
   --apply \
   --definition "$LABEL=$STAGED_TEMPLATE"
-echo "No service was loaded or restarted. Complete the cutover runbook and obtain separate restart authorisation before activation."
+echo "No service was loaded or restarted. Any future activation requires separate restart authorisation and complete selected-release verification; docs/application-storage-cutover.md is historical evidence."
