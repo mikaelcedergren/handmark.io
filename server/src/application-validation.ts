@@ -30,7 +30,7 @@ export function validateApplicationSubmission(payload: unknown): ValidatedApplic
     invalid('Choose a valid payment preference.');
   }
 
-  // Keep the historical first-error order stable even though the returned object's key order is
+  // Keep the public first-error order stable even though the returned object's key order is
   // separately fixed by the canonical application-record serializer.
   const name = requiredField(source, 'name', 200);
   const email = requiredEmail(source);

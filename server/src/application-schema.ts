@@ -1,8 +1,6 @@
 import {
   SQLITE_MIGRATION_LEDGER_TABLE,
   applySqliteMigrations,
-  applySqliteMigrationsAtomically,
-  verifySqliteIntegrity,
   withImmediateTransaction,
   type ReadonlySyncSqliteDatabase,
   type SqliteMigration,
@@ -11,39 +9,20 @@ import {
   type SyncSqliteDatabase,
 } from '@mikaelcedergren/cx-framework/server/sqlite';
 import { sha256Hex } from '@mikaelcedergren/cx-framework/server/signing';
+
 import {
-  APPLICATION_RECORD_FIELDS,
   applicationRecordHash,
   canonicalApplicationRecordBytes,
-  orderedApplicationRecordHash,
-  parseHistoricalApplicationRecord,
   sqliteTextProjection,
   type ApplicationRecord,
 } from './application-record.js';
 
-export const APPLICATION_IMPORT_RECEIPT_KEY = 'legacy_jsonl_v1';
-export const APPLICATION_IMPORT_FORMAT_VERSION = 1;
-export const APPLICATION_IMPORT_AUTHORITY_KEY = 'legacy_cutover_v1';
-export const APPLICATION_IMPORT_AUTHORITY_KINDS = Object.freeze([
-  'legacy_jsonl_v1',
-  'legacy_empty_absence_v1',
-] as const);
-export type ApplicationImportAuthorityKind = (typeof APPLICATION_IMPORT_AUTHORITY_KINDS)[number];
-export const EMPTY_APPLICATION_AUTHORITY_SHA256 = sha256Hex('handmark:legacy-empty-authority:v1\n');
-export const EMPTY_APPLICATION_RECORDS_SHA256 = sha256Hex('');
-
-export interface ApplicationImportReceipt {
-  readonly authorityKind: ApplicationImportAuthorityKind;
-  readonly formatVersion: number;
-  readonly orderedRecordsSha256: string;
-  readonly recordCount: number;
-  readonly sourceBytes: number;
-  readonly sourceSha256: string;
-}
-
 const APPLICATIONS_TABLE = 'applications';
-const IMPORT_RECEIPTS_TABLE = 'application_import_receipts';
-const IMPORT_AUTHORITIES_TABLE = 'application_import_authorities';
+const REQUIRED_SCHEMA_OBJECTS = Object.freeze([
+  'applications',
+  'applications_created_at_ms_idx',
+  'applications_immutable_update',
+] as const);
 const RECEIPT_SCHEMA_OBJECTS = Object.freeze([
   'application_import_receipts',
   'application_import_receipts_sealed_delete',
@@ -56,28 +35,16 @@ const AUTHORITY_SCHEMA_OBJECTS = Object.freeze([
   'application_import_authorities_sealed_insert',
   'application_import_authorities_sealed_update',
 ] as const);
-const REQUIRED_SCHEMA_OBJECTS = Object.freeze([
-  'applications',
-  'applications_created_at_ms_idx',
-  'applications_immutable_update',
-  'application_import_receipts',
-  'application_import_receipts_sealed_delete',
-  'application_import_receipts_sealed_insert',
-  'application_import_receipts_sealed_update',
-  ...AUTHORITY_SCHEMA_OBJECTS,
-] as const);
 const EXPECTED_SCHEMA_OBJECT_NAMES = Object.freeze(
   [
     ...REQUIRED_SCHEMA_OBJECTS,
     SQLITE_MIGRATION_LEDGER_TABLE,
-    'sqlite_autoindex_application_import_receipts_1',
-    'sqlite_autoindex_application_import_authorities_1',
-    'sqlite_autoindex_application_import_authorities_2',
     'sqlite_autoindex_applications_1',
     'sqlite_autoindex_cx_schema_migrations_1',
     'sqlite_sequence',
   ].toSorted(),
 );
+
 const MIGRATION_LEDGER_TABLE_SQL = `CREATE TABLE cx_schema_migrations (
   version INTEGER PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
@@ -118,10 +85,6 @@ const APPLICATION_VALUE_COLUMNS_SQL = `id, created_at, created_at_ms, plan, bill
 
 const APPLICATION_ROW_COLUMNS_SQL = `intake_sequence, ${APPLICATION_VALUE_COLUMNS_SQL}`;
 
-const IMPORTED_APPLICATION_INSERT_SQL = `INSERT INTO ${APPLICATIONS_TABLE} (
-  intake_sequence, ${APPLICATION_VALUE_COLUMNS_SQL}
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
 const APPLICATION_APPEND_SQL = `INSERT INTO ${APPLICATIONS_TABLE} (
   ${APPLICATION_VALUE_COLUMNS_SQL}
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -130,6 +93,9 @@ RETURNING ${APPLICATION_ROW_COLUMNS_SQL}`;
 
 const APPLICATION_ID_COLLISION = Object.freeze({ kind: 'application_id_collision' });
 
+// Versions 1 and 2 are immutable migration history. Their import-evidence objects are created with
+// their original bytes so existing databases keep verifiable ledger fingerprints, then version 3
+// removes them permanently. No current runtime path reads or depends on those objects.
 const IMPORT_RECEIPTS_TABLE_SQL = `CREATE TABLE application_import_receipts (
   receipt_key TEXT PRIMARY KEY CHECK(receipt_key = 'legacy_jsonl_v1'),
   format_version INTEGER NOT NULL CHECK(format_version = 1),
@@ -198,8 +164,6 @@ SELECT 'legacy_cutover_v1', receipt_key, 'legacy_jsonl_v1'
 FROM application_import_receipts
 WHERE receipt_key = 'legacy_jsonl_v1'`;
 
-// Application records are append-only. Retention may delete expired rows later, but no submitted
-// or imported record may be rewritten in place after its canonical bytes have been recorded.
 const APPLICATION_IMMUTABLE_UPDATE_TRIGGER_SQL = `CREATE TRIGGER applications_immutable_update
 BEFORE UPDATE ON applications
 BEGIN
@@ -231,6 +195,20 @@ export const HANDMARK_APPLICATION_MIGRATIONS = Object.freeze([
       ADOPT_JSONL_AUTHORITY_SQL,
     ] as const),
   }),
+  Object.freeze({
+    version: 3,
+    name: 'retire_import_evidence',
+    statements: Object.freeze([
+      'DROP TRIGGER application_import_authorities_sealed_delete',
+      'DROP TRIGGER application_import_authorities_sealed_update',
+      'DROP TRIGGER application_import_authorities_sealed_insert',
+      'DROP TABLE application_import_authorities',
+      'DROP TRIGGER application_import_receipts_sealed_delete',
+      'DROP TRIGGER application_import_receipts_sealed_update',
+      'DROP TRIGGER application_import_receipts_sealed_insert',
+      'DROP TABLE application_import_receipts',
+    ] as const),
+  }),
 ] as const satisfies readonly SqliteMigration[]);
 
 export function migrateApplicationSchema(
@@ -247,79 +225,23 @@ export function migrateApplicationSchema(
   verifyApplicationSchema(database);
 }
 
-export function migrateApplicationSchemaWithLegacyReceipt(
-  database: SyncSqliteDatabase,
-  expectedReceipt: ApplicationImportReceipt,
-  now: () => string = () => new Date().toISOString(),
-): void {
-  const result = applySqliteMigrationsAtomically(database, HANDMARK_APPLICATION_MIGRATIONS, {
-    captureState(transaction) {
-      const receipt = readMigrationSafeLegacyApplicationImportReceipt(transaction);
-      if (!receipt) {
-        throw new Error('Handmark legacy application import receipt is missing before migration.');
-      }
-      assertSameApplicationImportReceipt(receipt, expectedReceipt);
-      return receipt;
-    },
-    fingerprint: sha256Hex,
-    now,
-    verifyFinalState(transaction, receipt) {
-      verifyApplicationSchema(transaction);
-      const migratedReceipt = readVerifiedLegacyApplicationImportReceipt(transaction);
-      if (!migratedReceipt) {
-        throw new Error('Handmark legacy application import receipt is missing after migration.');
-      }
-      assertSameApplicationImportReceipt(migratedReceipt, receipt);
-    },
-  });
-  if (result.currentVersion !== HANDMARK_APPLICATION_MIGRATIONS.length) {
-    throw new Error('Handmark application schema did not reach its canonical migration version.');
-  }
-}
-
-export function insertImportedApplication(
-  database: SyncSqliteDatabase,
-  record: ApplicationRecord,
-  intakeSequence: number,
-): void {
-  if (!Number.isSafeInteger(intakeSequence) || intakeSequence < 1) {
-    throw new Error('Imported application intake sequence must be a positive safe integer.');
-  }
-  const result = database.run(IMPORTED_APPLICATION_INSERT_SQL, [
-    intakeSequence,
-    ...applicationRecordSqlValues(record),
-  ]);
-  if (result.changes !== 1) {
-    throw new Error('Imported application was not inserted exactly once.');
-  }
-}
-
-/**
- * Append one canonical runtime record. An undefined result means only that its id already exists;
- * every other constraint or storage failure still throws.
- */
+/** Append one canonical record. Undefined means only that its generated id already exists. */
 export function appendApplication(
   database: SyncSqliteDatabase,
   record: ApplicationRecord,
 ): number | undefined {
-  const canonicalRecord = parseHistoricalApplicationRecord(
-    canonicalApplicationRecordBytes(record).toString('utf8'),
-  );
   try {
     return withImmediateTransaction(database, () => {
       const row = database.get<ApplicationRow>(
         APPLICATION_APPEND_SQL,
-        applicationRecordSqlValues(canonicalRecord),
+        applicationRecordSqlValues(record),
       );
-      // ON CONFLICT advances sqlite_sequence unless the whole transaction rolls back. A private
-      // identity sentinel keeps the driver-specific collision detail out of runtime code while
-      // preserving a gap-free sequence for an ID retry.
       if (!row) throw APPLICATION_ID_COLLISION;
       const intakeSequence = safeInteger(row.intake_sequence, 'Application intake sequence');
       if (intakeSequence < 1) {
         throw new Error('Application intake sequence must be a positive safe integer.');
       }
-      assertApplicationRow(row, canonicalRecord, intakeSequence);
+      assertApplicationRow(row, record, intakeSequence);
       return intakeSequence;
     });
   } catch (error) {
@@ -338,71 +260,56 @@ export function deleteApplicationsAtOrBefore(
     .changes;
 }
 
-export function insertApplicationImportReceipt(
-  database: SyncSqliteDatabase,
-  receipt: ApplicationImportReceipt,
-): void {
-  assertApplicationImportReceipt(receipt);
-  const result = database.run(
-    `INSERT INTO ${IMPORT_RECEIPTS_TABLE} (
-       receipt_key, format_version, source_bytes, source_sha256, record_count,
-       ordered_records_sha256
-     ) VALUES (?, ?, ?, ?, ?, ?)`,
-    [
-      APPLICATION_IMPORT_RECEIPT_KEY,
-      receipt.formatVersion,
-      receipt.sourceBytes,
-      receipt.sourceSha256,
-      receipt.recordCount,
-      receipt.orderedRecordsSha256,
-    ],
-  );
-  if (result.changes !== 1) {
-    throw new Error('The application import receipt was not inserted exactly once.');
-  }
-  const authorityResult = database.run(
-    `INSERT INTO ${IMPORT_AUTHORITIES_TABLE} (
-       authority_key, receipt_key, authority_kind
-     ) VALUES (?, ?, ?)`,
-    [APPLICATION_IMPORT_AUTHORITY_KEY, APPLICATION_IMPORT_RECEIPT_KEY, receipt.authorityKind],
-  );
-  if (authorityResult.changes !== 1) {
-    throw new Error('The application import authority was not inserted exactly once.');
-  }
+export function verifyApplicationSchema(database: ReadonlySyncSqliteDatabase): void {
+  verifyApplicationMigrationLedger(database, true);
+  verifyCurrentSchemaObjects(database);
 }
 
 /**
- * Read-only cutover proof. Undefined means the canonical schema exists but its one sealed legacy
- * import receipt does not; malformed, noncanonical, or ambiguous database state throws.
+ * Read-only ownership proof required before an existing database can be opened writable. It accepts
+ * only a byte-authentic prefix of this product's migration ledger and the exact schema for that
+ * prefix. Pending migrations remain the sole writer after this check.
  */
-export function readVerifiedLegacyApplicationImportReceipt(
-  database: SyncSqliteDatabase,
-): ApplicationImportReceipt | undefined {
-  verifyApplicationSchema(database);
-  return readStoredLegacyApplicationImportReceipt(database, true);
-}
-
-/**
- * Verify only the immutable cutover foundation needed before pending migrations can run. The
- * applied ledger must be an exact prefix of the code's migration list, while the receipt table and
- * all three sealing triggers remain byte-for-byte schema invariants.
- */
-export function readMigrationSafeLegacyApplicationImportReceipt(
-  database: ReadonlySyncSqliteDatabase,
-  migrations: readonly SqliteMigration[] = HANDMARK_APPLICATION_MIGRATIONS,
-): ApplicationImportReceipt | undefined {
-  const appliedMigrations = verifyApplicationMigrationLedger(database, migrations, false);
-  if (appliedMigrations === 0) {
-    throw new Error('Handmark receipt foundation has no canonical migration ledger entry.');
+export function verifyApplicationDatabaseBeforeWrite(database: ReadonlySyncSqliteDatabase): void {
+  const applied = verifyApplicationMigrationLedger(database, false);
+  if (applied === HANDMARK_APPLICATION_MIGRATIONS.length) {
+    verifyCurrentSchemaObjects(database);
+    return;
   }
+  if (applied < 1 || applied > 2) {
+    throw new Error('Handmark database has no supported schema prefix.');
+  }
+
+  const required = [
+    ...REQUIRED_SCHEMA_OBJECTS,
+    ...RECEIPT_SCHEMA_OBJECTS,
+    ...(applied === 2 ? AUTHORITY_SCHEMA_OBJECTS : []),
+  ];
+  const expectedNames = [
+    ...required,
+    SQLITE_MIGRATION_LEDGER_TABLE,
+    'sqlite_autoindex_application_import_receipts_1',
+    ...(applied === 2
+      ? [
+          'sqlite_autoindex_application_import_authorities_1',
+          'sqlite_autoindex_application_import_authorities_2',
+        ]
+      : []),
+    'sqlite_autoindex_applications_1',
+    'sqlite_autoindex_cx_schema_migrations_1',
+    'sqlite_sequence',
+  ].toSorted();
+  assertExactSchemaNames(database, expectedNames);
+
   const schemaRows = database.all<SchemaRow>(
     `SELECT type, name, sql
      FROM sqlite_schema
-     WHERE name IN (${RECEIPT_SCHEMA_OBJECTS.map(() => '?').join(', ')})
+     WHERE name IN (${required.map(() => '?').join(', ')})
      ORDER BY name`,
-    RECEIPT_SCHEMA_OBJECTS,
+    required,
   );
   const schema = new Map(schemaRows.map((row) => [row.name, row]));
+  assertCurrentApplicationSchema(schema);
   assertSchemaObject(schema, 'application_import_receipts', 'table', IMPORT_RECEIPTS_TABLE_SQL);
   assertSchemaObject(
     schema,
@@ -422,249 +329,11 @@ export function readMigrationSafeLegacyApplicationImportReceipt(
     'trigger',
     RECEIPT_SEALED_DELETE_TRIGGER_SQL,
   );
-  if (appliedMigrations >= 2) {
-    assertAuthoritySchema(database);
-  }
-  return readStoredLegacyApplicationImportReceipt(database, appliedMigrations >= 2);
+  if (applied === 2) assertAuthoritySchema(schema);
 }
 
-function readStoredLegacyApplicationImportReceipt(
-  database: ReadonlySyncSqliteDatabase,
-  authoritySchemaCurrent: boolean,
-): ApplicationImportReceipt | undefined {
-  const rows = database.all<ReceiptRow>(
-    `SELECT
-       receipt_key, format_version, source_bytes, source_sha256, record_count,
-       ordered_records_sha256
-     FROM ${IMPORT_RECEIPTS_TABLE}
-     ORDER BY receipt_key`,
-  );
-  const authorityRows = authoritySchemaCurrent
-    ? database.all<AuthorityRow>(
-        `SELECT authority_key, receipt_key, authority_kind
-         FROM ${IMPORT_AUTHORITIES_TABLE}
-         ORDER BY authority_key`,
-      )
-    : [];
-  if (rows.length === 0) {
-    if (authorityRows.length !== 0) {
-      throw new Error('Handmark database has an import authority without a receipt.');
-    }
-    return undefined;
-  }
-  if (rows.length !== 1) {
-    throw new Error('Handmark database has an ambiguous legacy application import receipt.');
-  }
-  const receipt = rows[0];
-  if (!receipt) throw new Error('Handmark legacy application import receipt is missing.');
-  assertStoredReceiptShape(receipt);
-  let authorityKind: ApplicationImportAuthorityKind = 'legacy_jsonl_v1';
-  if (authoritySchemaCurrent) {
-    if (authorityRows.length !== 1) {
-      throw new Error('Handmark database has an ambiguous legacy application import authority.');
-    }
-    const authority = authorityRows[0];
-    if (!authority) throw new Error('Handmark legacy application import authority is missing.');
-    authorityKind = assertStoredAuthorityShape(authority);
-  }
-  const result = Object.freeze({
-    authorityKind,
-    formatVersion: safeInteger(receipt.format_version, 'Receipt format version'),
-    orderedRecordsSha256: receipt.ordered_records_sha256,
-    recordCount: safeInteger(receipt.record_count, 'Receipt record count'),
-    sourceBytes: safeInteger(receipt.source_bytes, 'Receipt source bytes'),
-    sourceSha256: receipt.source_sha256,
-  });
-  assertApplicationImportReceipt(result);
-  return result;
-}
-
-export function hasVerifiedLegacyApplicationImportReceipt(database: SyncSqliteDatabase): boolean {
-  return readVerifiedLegacyApplicationImportReceipt(database) !== undefined;
-}
-
-export function verifyImportedApplicationDatabase(
-  database: SyncSqliteDatabase,
-  receipt: ApplicationImportReceipt,
-  records: readonly ApplicationRecord[],
-): void {
-  verifyApplicationImportFoundation(database, receipt);
-  verifyApplicationRows(database, records);
-}
-
-/**
- * One-time read-only cutover proof for a database whose original JSONL records are intentionally
- * unavailable to the verifier. Reconstruct the semantic records only from their canonical private
- * database blobs, then prove every projection, sequence, row hash, and ordered aggregate against
- * the independently captured sealed receipt.
- */
-export function verifyStoredImportedApplicationDatabase(
-  database: SyncSqliteDatabase,
-  receipt: ApplicationImportReceipt,
-  {
-    maxRecordBytes,
-    maxRecords,
-    maxSourceBytes,
-  }: Readonly<{
-    readonly maxRecordBytes: number;
-    readonly maxRecords: number;
-    readonly maxSourceBytes: number;
-  }>,
-): ApplicationImportReceipt {
-  if (
-    !Number.isSafeInteger(maxRecordBytes) ||
-    maxRecordBytes < 1 ||
-    !Number.isSafeInteger(maxRecords) ||
-    maxRecords < 0 ||
-    !Number.isSafeInteger(maxSourceBytes) ||
-    maxSourceBytes < 0
-  ) {
-    throw new Error('Handmark imported-record verification bounds are invalid.');
-  }
-  assertApplicationImportReceipt(receipt);
-  if (receipt.recordCount > maxRecords) {
-    throw new Error('Handmark sealed receipt exceeds the imported-record verification bound.');
-  }
-  if (receipt.sourceBytes > maxSourceBytes) {
-    throw new Error('Handmark sealed receipt exceeds the imported-source verification bound.');
-  }
-
-  const storedReceipt = verifyApplicationImportFoundation(database, receipt);
-  const rowLimit = receipt.recordCount + 1;
-  const metadata = database.all<CanonicalRecordSizeRow>(
-    `SELECT intake_sequence, length(record_json) AS record_bytes
-     FROM ${APPLICATIONS_TABLE}
-     ORDER BY intake_sequence
-     LIMIT ?`,
-    [rowLimit],
-  );
-  if (metadata.length !== receipt.recordCount) {
-    throw new Error('Handmark application rows do not match the sealed cutover receipt.');
-  }
-  const recordByteCounts = metadata.map((row, index) => {
-    const recordBytes = safeInteger(row.record_bytes, 'Application canonical record bytes');
-    if (
-      safeInteger(row.intake_sequence, 'Application intake sequence') !== index + 1 ||
-      recordBytes < 1 ||
-      recordBytes > maxRecordBytes
-    ) {
-      throw new Error('Handmark imported application row metadata is outside its sealed bounds.');
-    }
-    return recordBytes;
-  });
-  const aggregateRecordBytes = recordByteCounts.reduce((total, recordBytes) => {
-    const next = total + recordBytes;
-    if (!Number.isSafeInteger(next)) {
-      throw new Error('Handmark imported canonical record aggregate is outside its sealed bound.');
-    }
-    return next;
-  }, 0);
-  if (receipt.authorityKind === 'legacy_jsonl_v1' && aggregateRecordBytes > receipt.sourceBytes) {
-    throw new Error('Handmark imported canonical record aggregate exceeds its sealed source.');
-  }
-
-  const canonicalRows = database.all<CanonicalRecordRow>(
-    `SELECT intake_sequence, record_json
-     FROM ${APPLICATIONS_TABLE}
-     ORDER BY intake_sequence
-     LIMIT ?`,
-    [rowLimit],
-  );
-  if (canonicalRows.length !== receipt.recordCount) {
-    throw new Error('Handmark canonical application rows changed during cutover verification.');
-  }
-  const records = canonicalRows.map((row, index) => {
-    const expectedSequence = index + 1;
-    if (
-      safeInteger(row.intake_sequence, 'Application intake sequence') !== expectedSequence ||
-      !(row.record_json instanceof Uint8Array) ||
-      row.record_json.byteLength !== recordByteCounts[index]
-    ) {
-      throw new Error(
-        `Handmark imported application row ${String(expectedSequence)} is not canonical.`,
-      );
-    }
-    try {
-      const bytes = Buffer.from(
-        row.record_json.buffer,
-        row.record_json.byteOffset,
-        row.record_json.byteLength,
-      );
-      const decoded = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-      return parseHistoricalApplicationRecord(decoded);
-    } catch {
-      throw new Error(
-        `Handmark imported application row ${String(expectedSequence)} has invalid canonical bytes.`,
-      );
-    }
-  });
-  if (orderedApplicationRecordHash(records) !== receipt.orderedRecordsSha256) {
-    throw new Error('Handmark imported application rows fail sealed aggregate parity.');
-  }
-  verifyApplicationRows(database, records);
-  return storedReceipt;
-}
-
-function verifyApplicationImportFoundation(
-  database: SyncSqliteDatabase,
-  receipt: ApplicationImportReceipt,
-): ApplicationImportReceipt {
-  verifyApplicationSchema(database);
-  verifySqliteIntegrity(database);
-
-  const storedReceipt = readVerifiedLegacyApplicationImportReceipt(database);
-  if (!storedReceipt) throw new Error('Handmark application import receipt is missing.');
-  assertSameApplicationImportReceipt(storedReceipt, receipt);
-  return storedReceipt;
-}
-
-function verifyApplicationRows(
-  database: SyncSqliteDatabase,
-  records: readonly ApplicationRecord[],
-): void {
-  const rows = database.all<ApplicationRow>(
-    `SELECT ${APPLICATION_ROW_COLUMNS_SQL}
-     FROM ${APPLICATIONS_TABLE}
-     ORDER BY intake_sequence
-     LIMIT ?`,
-    [records.length + 1],
-  );
-  if (rows.length !== records.length) {
-    throw new Error(
-      `Imported application count mismatch: expected ${records.length}, received ${rows.length}.`,
-    );
-  }
-
-  for (const [index, expected] of records.entries()) {
-    const row = rows[index];
-    if (!row) throw new Error(`Imported application row ${index + 1} is missing.`);
-    assertApplicationRow(row, expected, index + 1);
-  }
-
-  const sequence = database.get<SequenceRow>(
-    "SELECT seq FROM sqlite_sequence WHERE name = 'applications'",
-  );
-  if (records.length === 0) {
-    if (sequence !== undefined) {
-      throw new Error('An empty application import unexpectedly advanced its intake sequence.');
-    }
-  } else if (safeInteger(sequence?.seq, 'Application intake sequence') !== records.length) {
-    throw new Error('Application intake sequence does not match the imported physical order.');
-  }
-}
-
-export function verifyApplicationSchema(database: SyncSqliteDatabase): void {
-  verifyApplicationMigrationLedger(database, HANDMARK_APPLICATION_MIGRATIONS, true);
-
-  const schemaNames = database
-    .all<SchemaNameRow>('SELECT name FROM sqlite_schema ORDER BY name')
-    .map((row) => row.name);
-  if (
-    schemaNames.length !== EXPECTED_SCHEMA_OBJECT_NAMES.length ||
-    schemaNames.some((name, index) => name !== EXPECTED_SCHEMA_OBJECT_NAMES[index])
-  ) {
-    throw new Error('Handmark database contains an unexpected or missing schema object.');
-  }
+function verifyCurrentSchemaObjects(database: ReadonlySyncSqliteDatabase): void {
+  assertExactSchemaNames(database, EXPECTED_SCHEMA_OBJECT_NAMES);
 
   const schemaRows = database.all<SchemaRow>(
     `SELECT type, name, sql
@@ -674,6 +343,10 @@ export function verifyApplicationSchema(database: SyncSqliteDatabase): void {
     REQUIRED_SCHEMA_OBJECTS,
   );
   const schema = new Map(schemaRows.map((row) => [row.name, row]));
+  assertCurrentApplicationSchema(schema);
+}
+
+function assertCurrentApplicationSchema(schema: ReadonlyMap<string, SchemaRow>): void {
   assertSchemaObject(schema, 'applications', 'table', APPLICATIONS_TABLE_SQL);
   assertSchemaObject(
     schema,
@@ -681,43 +354,15 @@ export function verifyApplicationSchema(database: SyncSqliteDatabase): void {
     'index',
     APPLICATIONS_CREATED_AT_INDEX_SQL,
   );
-  assertSchemaObject(schema, 'application_import_receipts', 'table', IMPORT_RECEIPTS_TABLE_SQL);
-  assertSchemaObject(
-    schema,
-    'application_import_receipts_sealed_insert',
-    'trigger',
-    RECEIPT_SEALED_INSERT_TRIGGER_SQL,
-  );
-  assertSchemaObject(
-    schema,
-    'application_import_receipts_sealed_update',
-    'trigger',
-    RECEIPT_SEALED_UPDATE_TRIGGER_SQL,
-  );
-  assertSchemaObject(
-    schema,
-    'application_import_receipts_sealed_delete',
-    'trigger',
-    RECEIPT_SEALED_DELETE_TRIGGER_SQL,
-  );
   assertSchemaObject(
     schema,
     'applications_immutable_update',
     'trigger',
     APPLICATION_IMMUTABLE_UPDATE_TRIGGER_SQL,
   );
-  assertAuthoritySchema(database);
 }
 
-function assertAuthoritySchema(database: ReadonlySyncSqliteDatabase): void {
-  const schemaRows = database.all<SchemaRow>(
-    `SELECT type, name, sql
-     FROM sqlite_schema
-     WHERE name IN (${AUTHORITY_SCHEMA_OBJECTS.map(() => '?').join(', ')})
-     ORDER BY name`,
-    AUTHORITY_SCHEMA_OBJECTS,
-  );
-  const schema = new Map(schemaRows.map((row) => [row.name, row]));
+function assertAuthoritySchema(schema: ReadonlyMap<string, SchemaRow>): void {
   assertSchemaObject(
     schema,
     'application_import_authorities',
@@ -746,7 +391,6 @@ function assertAuthoritySchema(database: ReadonlySyncSqliteDatabase): void {
 
 function verifyApplicationMigrationLedger(
   database: ReadonlySyncSqliteDatabase,
-  migrations: readonly SqliteMigration[],
   requireCurrent: boolean,
 ): number {
   const ledger = database.all<MigrationLedgerRow>(
@@ -755,25 +399,22 @@ function verifyApplicationMigrationLedger(
      ORDER BY version`,
   );
   if (
-    ledger.length > migrations.length ||
-    (requireCurrent && ledger.length !== migrations.length)
+    ledger.length > HANDMARK_APPLICATION_MIGRATIONS.length ||
+    (requireCurrent && ledger.length !== HANDMARK_APPLICATION_MIGRATIONS.length)
   ) {
     throw new Error('Handmark canonical SQLite migration ledger has an unexpected length.');
   }
   for (const [index, row] of ledger.entries()) {
-    const migration = migrations[index];
-    if (!migration) {
-      throw new Error(`Handmark migration ledger row ${index + 1} has no source definition.`);
-    }
-    const expectedFingerprint = migrationFingerprint(migration);
+    const migration = HANDMARK_APPLICATION_MIGRATIONS[index];
     if (
+      !migration ||
       safeInteger(row.version, 'Migration version') !== migration.version ||
       row.name !== migration.name ||
-      row.fingerprint !== expectedFingerprint ||
+      row.fingerprint !== migrationFingerprint(migration) ||
       typeof row.applied_at !== 'string' ||
       !isCanonicalTimestamp(row.applied_at)
     ) {
-      throw new Error(`Handmark migration ledger row ${migration.version} does not match source.`);
+      throw new Error(`Handmark migration ledger row ${String(index + 1)} does not match source.`);
     }
   }
   const ledgerSchema = database.get<SchemaRow>(
@@ -808,21 +449,6 @@ interface SchemaNameRow extends SqliteRow {
   readonly name: string;
 }
 
-interface ReceiptRow extends SqliteRow {
-  readonly receipt_key: string;
-  readonly format_version: number | bigint;
-  readonly source_bytes: number | bigint;
-  readonly source_sha256: string;
-  readonly record_count: number | bigint;
-  readonly ordered_records_sha256: string;
-}
-
-interface AuthorityRow extends SqliteRow {
-  readonly authority_key: string;
-  readonly authority_kind: string;
-  readonly receipt_key: string;
-}
-
 interface ApplicationRow extends SqliteRow {
   readonly intake_sequence: number | bigint;
   readonly id: string;
@@ -842,20 +468,6 @@ interface ApplicationRow extends SqliteRow {
   readonly payment_preference: string;
   readonly record_json: Uint8Array;
   readonly record_hash: string;
-}
-
-interface SequenceRow extends SqliteRow {
-  readonly seq: number | bigint;
-}
-
-interface CanonicalRecordSizeRow extends SqliteRow {
-  readonly intake_sequence: number | bigint;
-  readonly record_bytes: number | bigint;
-}
-
-interface CanonicalRecordRow extends SqliteRow {
-  readonly intake_sequence: number | bigint;
-  readonly record_json: Uint8Array;
 }
 
 function applicationRecordSqlValues(record: ApplicationRecord): readonly SqliteValue[] {
@@ -880,75 +492,6 @@ function applicationRecordSqlValues(record: ApplicationRecord): readonly SqliteV
   ];
 }
 
-function assertSameApplicationImportReceipt(
-  actual: ApplicationImportReceipt,
-  expected: ApplicationImportReceipt,
-): void {
-  if (
-    actual.authorityKind !== expected.authorityKind ||
-    actual.formatVersion !== expected.formatVersion ||
-    actual.sourceBytes !== expected.sourceBytes ||
-    actual.sourceSha256 !== expected.sourceSha256 ||
-    actual.recordCount !== expected.recordCount ||
-    actual.orderedRecordsSha256 !== expected.orderedRecordsSha256
-  ) {
-    throw new Error('Handmark application import receipt changed during schema migration.');
-  }
-}
-
-function assertStoredAuthorityShape(row: AuthorityRow): ApplicationImportAuthorityKind {
-  if (
-    row.authority_key !== APPLICATION_IMPORT_AUTHORITY_KEY ||
-    row.receipt_key !== APPLICATION_IMPORT_RECEIPT_KEY ||
-    !APPLICATION_IMPORT_AUTHORITY_KINDS.includes(
-      row.authority_kind as ApplicationImportAuthorityKind,
-    )
-  ) {
-    throw new Error('Handmark legacy application import authority is invalid.');
-  }
-  return row.authority_kind as ApplicationImportAuthorityKind;
-}
-
-function assertApplicationImportReceipt(receipt: ApplicationImportReceipt): void {
-  if (
-    !APPLICATION_IMPORT_AUTHORITY_KINDS.includes(receipt.authorityKind) ||
-    receipt.formatVersion !== APPLICATION_IMPORT_FORMAT_VERSION ||
-    !Number.isSafeInteger(receipt.sourceBytes) ||
-    receipt.sourceBytes < 0 ||
-    !/^[0-9a-f]{64}$/.test(receipt.sourceSha256) ||
-    !Number.isSafeInteger(receipt.recordCount) ||
-    receipt.recordCount < 0 ||
-    !/^[0-9a-f]{64}$/.test(receipt.orderedRecordsSha256)
-  ) {
-    throw new Error('Handmark legacy application import receipt is invalid.');
-  }
-  if (
-    receipt.authorityKind === 'legacy_empty_absence_v1' &&
-    (receipt.sourceBytes !== 0 ||
-      receipt.sourceSha256 !== EMPTY_APPLICATION_AUTHORITY_SHA256 ||
-      receipt.recordCount !== 0 ||
-      receipt.orderedRecordsSha256 !== EMPTY_APPLICATION_RECORDS_SHA256)
-  ) {
-    throw new Error('Handmark empty application authority receipt is not canonical.');
-  }
-}
-
-function assertStoredReceiptShape(row: ReceiptRow): void {
-  if (
-    row.receipt_key !== APPLICATION_IMPORT_RECEIPT_KEY ||
-    safeInteger(row.format_version, 'Receipt format version') !==
-      APPLICATION_IMPORT_FORMAT_VERSION ||
-    safeInteger(row.source_bytes, 'Receipt source bytes') < 0 ||
-    typeof row.source_sha256 !== 'string' ||
-    !/^[0-9a-f]{64}$/.test(row.source_sha256) ||
-    safeInteger(row.record_count, 'Receipt record count') < 0 ||
-    typeof row.ordered_records_sha256 !== 'string' ||
-    !/^[0-9a-f]{64}$/.test(row.ordered_records_sha256)
-  ) {
-    throw new Error('Handmark legacy application import receipt is invalid.');
-  }
-}
-
 function assertApplicationRow(
   row: ApplicationRow,
   expected: ApplicationRecord,
@@ -962,14 +505,6 @@ function assertApplicationRow(
   );
   if (!storedBytes.equals(canonicalBytes)) {
     throw new Error('Application canonical record bytes do not match.');
-  }
-
-  const decoded = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(storedBytes);
-  const authoritative = parseHistoricalApplicationRecord(decoded);
-  for (const field of APPLICATION_RECORD_FIELDS) {
-    if (authoritative[field] !== expected[field]) {
-      throw new Error(`Application authoritative field ${field} does not match.`);
-    }
   }
 
   const expectedProjection = {
@@ -1018,6 +553,18 @@ function assertSchemaObject(
     normalizeSql(row.sql) !== normalizeSql(sql)
   ) {
     throw new Error(`Handmark schema object ${name} does not match its canonical definition.`);
+  }
+}
+
+function assertExactSchemaNames(
+  database: ReadonlySyncSqliteDatabase,
+  expected: readonly string[],
+): void {
+  const names = database
+    .all<SchemaNameRow>('SELECT name FROM sqlite_schema ORDER BY name')
+    .map((row) => row.name);
+  if (names.length !== expected.length || names.some((name, index) => name !== expected[index])) {
+    throw new Error('Handmark database contains an unexpected or missing schema object.');
   }
 }
 

@@ -27,7 +27,7 @@
             "inlineStyleLanguage": "scss",
             "assets": [
               {
-                "glob": "{robots.txt,sitemap.xml,site.webmanifest,login.html}",
+                "glob": "{robots.txt,sitemap.xml,site.webmanifest}",
                 "input": "public",
                 "output": "/"
               },

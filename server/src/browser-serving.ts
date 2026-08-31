@@ -15,7 +15,7 @@ export function createHandmarkBrowserServing(environment: HandmarkEnvironment): 
   return createBrowserServing({
     express,
     repoRoot: environment.operationalRoot,
-    legacyBrowserDir: path.join(environment.operationalRoot, 'dist', 'browser'),
+    defaultBrowserDir: path.join(environment.operationalRoot, 'dist', 'browser'),
     ...(environment.browserDirOverride === undefined
       ? {}
       : { browserDirOverride: environment.browserDirOverride }),

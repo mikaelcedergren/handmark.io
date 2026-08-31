@@ -8,12 +8,7 @@ import test, { after, type TestContext } from 'node:test';
 import { createPreparedSyncSqliteAdapter } from '@mikaelcedergren/cx-framework/server/sqlite';
 
 import type { ApplicationRecord } from './application-record.js';
-import {
-  appendApplication,
-  EMPTY_APPLICATION_AUTHORITY_SHA256,
-  EMPTY_APPLICATION_RECORDS_SHA256,
-  insertApplicationImportReceipt,
-} from './application-schema.js';
+import { appendApplication } from './application-schema.js';
 import { APPLICATION_RETENTION_MS } from './constants.js';
 import {
   openApplicationRepository,
@@ -104,178 +99,27 @@ test('health fails closed when the essential application schema disappears after
   assert.equal(repository.isReady(), false);
 });
 
-test('legacy source proof requires an exact sealed receipt before writable startup', (t) => {
+test('required storage fails closed without creating a replacement database', (t) => {
   const operationalRoot = fixtureRoot(t);
   const databasePath = path.join(operationalRoot, 'data', 'handmark.sqlite');
-  const source = Object.freeze({
-    kind: 'present_jsonl' as const,
-    sourceBytes: 17,
-    sourceSha256: 'a'.repeat(64),
-  });
 
-  assert.throws(
-    () =>
-      openApplicationRepository({
-        databasePath,
-        operationalRoot,
-        requiredLegacyImportAuthority: source,
-      }),
-    /must be imported.*before startup/,
+  assert.throws(() =>
+    openApplicationRepository({ databasePath, operationalRoot, requireExisting: true }),
   );
   assert.equal(fs.existsSync(databasePath), false);
   assert.equal(fs.existsSync(path.dirname(databasePath)), false);
 
-  const initial = openApplicationRepository({ databasePath, operationalRoot });
-  initial.close();
-  const unsealedStorage = storageDirectorySnapshot(path.dirname(databasePath));
-  assert.throws(
-    () =>
-      openApplicationRepository({
-        databasePath,
-        operationalRoot,
-        requiredLegacyImportAuthority: source,
-      }),
-    /does not contain a sealed legacy import receipt/,
-  );
-  assert.deepEqual(storageDirectorySnapshot(path.dirname(databasePath)), unsealedStorage);
-
-  const native = new DatabaseSync(databasePath);
-  insertApplicationImportReceipt(createPreparedSyncSqliteAdapter(native), {
-    authorityKind: 'legacy_jsonl_v1',
-    formatVersion: 1,
-    orderedRecordsSha256: 'b'.repeat(64),
-    recordCount: 0,
-    ...source,
-  });
-  native.close();
-
-  const repository = openApplicationRepository({
+  const created = openApplicationRepository({ databasePath, operationalRoot });
+  created.close();
+  const before = storageDirectorySnapshot(path.dirname(databasePath));
+  const reopened = openApplicationRepository({
     databasePath,
     operationalRoot,
-    requiredLegacyImportAuthority: source,
+    requireExisting: true,
   });
-  repository.close();
-  const sealedStorage = storageDirectorySnapshot(path.dirname(databasePath));
-  assert.throws(
-    () =>
-      openApplicationRepository({
-        databasePath,
-        operationalRoot,
-        requiredLegacyImportAuthority: { ...source, sourceSha256: 'c'.repeat(64) },
-      }),
-    /does not prove an exact import/,
-  );
-  assert.deepEqual(storageDirectorySnapshot(path.dirname(databasePath)), sealedStorage);
-});
-
-test('production rejects missing JSONL evidence even when its JSONL receipt is sealed', (t) => {
-  const operationalRoot = fixtureRoot(t);
-  const databasePath = path.join(operationalRoot, 'data', 'handmark.sqlite');
-
-  assert.throws(
-    () =>
-      openApplicationRepository({
-        databasePath,
-        operationalRoot,
-        requireLegacyImportReceipt: true,
-      }),
-    /must be imported.*before startup/,
-  );
-  assert.equal(fs.existsSync(databasePath), false);
-  assert.equal(fs.existsSync(path.dirname(databasePath)), false);
-
-  const initial = openApplicationRepository({ databasePath, operationalRoot });
-  initial.close();
-  const unsealedStorage = storageDirectorySnapshot(path.dirname(databasePath));
-  assert.throws(
-    () =>
-      openApplicationRepository({
-        databasePath,
-        operationalRoot,
-        requireLegacyImportReceipt: true,
-      }),
-    /does not contain a sealed legacy import receipt/,
-  );
-  assert.deepEqual(storageDirectorySnapshot(path.dirname(databasePath)), unsealedStorage);
-
-  const native = new DatabaseSync(databasePath);
-  insertApplicationImportReceipt(createPreparedSyncSqliteAdapter(native), {
-    authorityKind: 'legacy_jsonl_v1',
-    formatVersion: 1,
-    orderedRecordsSha256: 'd'.repeat(64),
-    recordCount: 0,
-    sourceBytes: 0,
-    sourceSha256: 'e'.repeat(64),
-  });
-  native.close();
-
-  const sealedStorage = storageDirectorySnapshot(path.dirname(databasePath));
-  assert.throws(
-    () =>
-      openApplicationRepository({
-        databasePath,
-        operationalRoot,
-        requireLegacyImportReceipt: true,
-        requiredLegacyImportAuthority: { kind: 'absent' },
-      }),
-    /does not prove an exact import/,
-  );
-  assert.deepEqual(storageDirectorySnapshot(path.dirname(databasePath)), sealedStorage);
-});
-
-test('absent startup authority accepts only a sealed receipt and keeps empty authority distinct', (t) => {
-  const operationalRoot = fixtureRoot(t);
-  const databasePath = path.join(operationalRoot, 'data', 'handmark.sqlite');
-  const initial = openApplicationRepository({ databasePath, operationalRoot });
-  initial.close();
-  const native = new DatabaseSync(databasePath);
-  insertApplicationImportReceipt(createPreparedSyncSqliteAdapter(native), {
-    authorityKind: 'legacy_empty_absence_v1',
-    formatVersion: 1,
-    orderedRecordsSha256: EMPTY_APPLICATION_RECORDS_SHA256,
-    recordCount: 0,
-    sourceBytes: 0,
-    sourceSha256: EMPTY_APPLICATION_AUTHORITY_SHA256,
-  });
-  native.close();
-
-  const checkpoints: string[] = [];
-  const absent = openApplicationRepository({
-    databasePath,
-    onOpenCheckpoint: (checkpoint) => checkpoints.push(checkpoint),
-    operationalRoot,
-    requiredLegacyImportAuthority: { kind: 'absent' },
-  });
-  assert.ok(checkpoints.indexOf('writable_opened') < checkpoints.indexOf('receipt_verified'));
-  assert.ok(checkpoints.indexOf('receipt_verified') < checkpoints.indexOf('before_write_verified'));
-  assert.ok(checkpoints.indexOf('before_write_verified') < checkpoints.indexOf('configured'));
-  absent.close();
-
-  assert.throws(
-    () =>
-      openApplicationRepository({
-        databasePath,
-        operationalRoot,
-        requiredLegacyImportAuthority: {
-          kind: 'present_jsonl',
-          sourceBytes: 0,
-          sourceSha256: EMPTY_APPLICATION_AUTHORITY_SHA256,
-        },
-      }),
-    /does not prove an exact import/,
-  );
-  assert.throws(
-    () =>
-      openApplicationRepository({
-        databasePath,
-        operationalRoot,
-        requiredLegacyImportAuthority: {
-          kind: 'absent',
-          unexpected: true,
-        } as never,
-      }),
-    /must contain only its kind/,
-  );
+  reopened.close();
+  assert.equal(fs.existsSync(databasePath), true);
+  assert.ok(before.some((entry) => entry.name === 'handmark.sqlite'));
 });
 
 test('an open repository fails closed if its selected database path is replaced', (t) => {
@@ -285,7 +129,7 @@ test('an open repository fails closed if its selected database path is replaced'
   const replacementPath = path.join(dataDirectory, 'replacement.sqlite');
   const displacedPath = path.join(dataDirectory, 'handmark-original.sqlite');
   const repository = openApplicationRepository({ databasePath, operationalRoot });
-  createSealedDatabase(operationalRoot, replacementPath, 'e');
+  createCurrentDatabase(operationalRoot, replacementPath);
   fs.renameSync(databasePath, displacedPath);
   fs.renameSync(replacementPath, databasePath);
 
@@ -304,7 +148,7 @@ test('an open repository fails closed if its selected database path is replaced'
 test('repository accepts pinned existing WAL recovery files without replacing them', (t) => {
   const operationalRoot = fixtureRoot(t);
   const databasePath = path.join(operationalRoot, 'data', 'handmark.sqlite');
-  createSealedDatabase(operationalRoot, databasePath, '3');
+  createCurrentDatabase(operationalRoot, databasePath);
   const external = new DatabaseSync(databasePath);
   t.after(() => external.close());
   external.exec('PRAGMA journal_mode=WAL');
@@ -321,7 +165,7 @@ test('repository accepts pinned existing WAL recovery files without replacing th
   const repository = openApplicationRepository({
     databasePath,
     operationalRoot,
-    requireLegacyImportReceipt: true,
+    requireExisting: true,
   });
   assert.equal(repository.isReady(), true);
   assert.equal(fs.statSync(writeAheadLogPath, { bigint: true }).ino, writeAheadLogIdentity.ino);
@@ -474,26 +318,9 @@ function applicationCount(databasePath: string): number {
   }
 }
 
-function createSealedDatabase(
-  operationalRoot: string,
-  databasePath: string,
-  hashCharacter: string,
-): void {
+function createCurrentDatabase(operationalRoot: string, databasePath: string): void {
   const repository = openApplicationRepository({ databasePath, operationalRoot });
   repository.close();
-  const database = new DatabaseSync(databasePath);
-  try {
-    insertApplicationImportReceipt(createPreparedSyncSqliteAdapter(database), {
-      authorityKind: 'legacy_jsonl_v1',
-      formatVersion: 1,
-      orderedRecordsSha256: hashCharacter.repeat(64),
-      recordCount: 0,
-      sourceBytes: 0,
-      sourceSha256: hashCharacter.repeat(64),
-    });
-  } finally {
-    database.close();
-  }
 }
 
 function storageDirectorySnapshot(directory: string) {

@@ -23,7 +23,6 @@ import {
   loadHandmarkEnvironment,
   type HandmarkEnvironment,
 } from './environment.js';
-import { openLegacyApplicationAuthorityProof } from './legacy-cutover.js';
 import { assertHandmarkProductManifest } from './product-contract.js';
 
 export interface HandmarkRuntime {
@@ -64,40 +63,16 @@ export async function startHandmarkServer({
     environment: sourceEnvironment,
   });
 
-  const legacyAuthority =
-    environment.isProduction && !environment.releaseValidation
-      ? openLegacyApplicationAuthorityProof({
-          operationalRoot: environment.operationalRoot,
-          sourcePath: environment.legacyApplicationsPath,
-        })
-      : undefined;
   let repository: ApplicationRepository | undefined;
   let repositoryOpen = false;
   try {
     const openedRepository = openApplicationRepository({
       databasePath: environment.databasePath,
       operationalRoot: environment.operationalRoot,
-      requireLegacyImportReceipt: environment.isProduction && !environment.releaseValidation,
-      ...(legacyAuthority === undefined
-        ? {}
-        : {
-            requiredLegacyImportAuthority:
-              legacyAuthority.kind === 'present_jsonl'
-                ? {
-                    kind: 'present_jsonl' as const,
-                    sourceBytes: legacyAuthority.sourceBytes,
-                    sourceSha256: legacyAuthority.sourceSha256,
-                  }
-                : { kind: 'absent' as const },
-          }),
+      requireExisting: environment.isProduction && !environment.releaseValidation,
     });
     repository = openedRepository;
     repositoryOpen = true;
-    try {
-      legacyAuthority?.assertUnchanged();
-    } finally {
-      legacyAuthority?.close();
-    }
     const app = createHandmarkApplication({
       browserServing: configuredBrowserServing,
       environment,
@@ -171,7 +146,6 @@ export async function startHandmarkServer({
       shutdown,
     });
   } catch (error) {
-    legacyAuthority?.close();
     if (repositoryOpen && repository) {
       repository.stopMaintenance();
       repository.close();

@@ -20,7 +20,6 @@ test('ordinary production accepts mutations from both exact live Handmark origin
   });
   assert.equal(environment.appOrigin, 'https://handmark.io');
   assert.equal(environment.dataDirectory, path.resolve('data'));
-  assert.equal(environment.legacyApplicationsPath, path.resolve('data/applications.jsonl'));
   assert.deepEqual(environment.mutationOrigins, ['https://handmark.io', 'https://www.handmark.io']);
 });
 
@@ -47,10 +46,7 @@ test('release validation accepts only its exact isolated loopback origin', (t) =
     NODE_ENV: 'production',
     PORT: '4232',
   });
-  assert.equal(
-    environment.legacyApplicationsPath,
-    path.join(runtimeRoot, 'data', 'applications.jsonl'),
-  );
+  assert.equal(environment.databasePath, path.join(runtimeRoot, 'data', 'handmark.sqlite'));
   assert.deepEqual(environment.mutationOrigins, ['http://127.0.0.1']);
   assert.match(environment.gatePassword, /^[A-Za-z0-9_-]{43}$/);
   assert.match(environment.sessionSecret, /^[A-Za-z0-9_-]{43}$/);
@@ -66,10 +62,6 @@ test('ordinary development defaults all mutable data to the isolated run directo
   const environment = loadHandmarkEnvironment({ ...secrets, NODE_ENV: 'development' });
   assert.equal(environment.dataDirectory, path.resolve('.run/dev/data'));
   assert.equal(environment.databasePath, path.resolve('.run/dev/data/handmark.sqlite'));
-  assert.equal(
-    environment.legacyApplicationsPath,
-    path.resolve('.run/dev/data/applications.jsonl'),
-  );
 });
 
 test('environment mode is an exact closed set', () => {

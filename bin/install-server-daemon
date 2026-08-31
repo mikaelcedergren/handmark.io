@@ -1,17 +1,11 @@
 #!/usr/bin/env bash
-# Validate tracked legacy evidence and the immutable-server definition. Applying a definition never
-# unloads, loads, or restarts Handmark; future activation remains separately authorised.
+# Validate or install the Handmark system LaunchDaemon definition. Installation never loads or
+# restarts the service; activation remains a separate privileged production gate.
 set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 readonly INSTALL_ROOT="/Users/cortex/Development/handmark.io"
-readonly LABEL="com.handmark.server"
-readonly LEGACY_TEMPLATE="$SOURCE_ROOT/launchd/$LABEL.plist"
-readonly TARGET_TEMPLATE="$SOURCE_ROOT/launchd/$LABEL.target.plist"
-readonly TARGET="/Library/LaunchDaemons/$LABEL.plist"
-readonly NODE="/opt/homebrew/bin/node"
-readonly SHARED_DEFINITION_INSTALLER="/Users/cortex/Development/server-ops/bin/install-launchdaemon-definitions.mjs"
-readonly SERVER_RELEASE_OPERATOR="/Users/cortex/Development/server-ops/bin/server-release.mjs"
+readonly SHARED_INSTALLER="$SOURCE_ROOT/../server-ops/bin/install-launchdaemon-definitions.mjs"
 MODE="check"
 
 if [[ "$#" -gt 1 ]]; then
@@ -30,38 +24,28 @@ case "${1:-}" in
     ;;
 esac
 
-for template in "$LEGACY_TEMPLATE" "$TARGET_TEMPLATE"; do
-  if [[ ! -f "$template" ]]; then
-    echo "FATAL: LaunchDaemon source is missing: $template" >&2
-    exit 1
-  fi
-  /usr/bin/plutil -lint "$template" >/dev/null
-done
+readonly LABEL="com.handmark.server"
+readonly TEMPLATE="$SOURCE_ROOT/launchd/$LABEL.plist"
+readonly RENDER_DIR="$(mktemp -d "/tmp/handmark-server-daemon.XXXXXX")"
+trap 'rm -rf "$RENDER_DIR"' EXIT
+readonly RENDERED="$RENDER_DIR/$LABEL.plist"
 
-validate_definitions() {
-  /usr/bin/python3 - \
-    "$1" \
-    "$2" \
-    "$LABEL" \
-    "$INSTALL_ROOT" <<'PY'
+if [[ ! -f "$TEMPLATE" ]]; then
+  echo "FATAL: template missing: $TEMPLATE" >&2
+  exit 1
+fi
+cp "$TEMPLATE" "$RENDERED"
+/usr/bin/plutil -lint "$RENDERED" >/dev/null
+/usr/bin/python3 - "$RENDERED" "$LABEL" "$INSTALL_ROOT" <<'PY'
 import plistlib
 import sys
 
-legacy_path, target_path, label, repo_root = sys.argv[1:]
-with open(legacy_path, "rb") as handle:
-    legacy = plistlib.load(handle)
-with open(target_path, "rb") as handle:
-    target = plistlib.load(handle)
+path, expected_label, repo_root = sys.argv[1:]
+with open(path, "rb") as handle:
+    payload = plistlib.load(handle)
 
-if legacy.get("Label") != label:
-    raise SystemExit(f"FATAL: legacy LaunchDaemon label is not {label}")
-if legacy.get("ProgramArguments") != ["/opt/homebrew/bin/node", "server/index.mjs"]:
-    raise SystemExit("FATAL: rollback-owned legacy LaunchDaemon entrypoint changed")
-if legacy.get("WorkingDirectory") != repo_root:
-    raise SystemExit("FATAL: rollback-owned legacy LaunchDaemon working directory changed")
-
-expected = {
-    "Label": label,
+expected_payload = {
+    "Label": expected_label,
     "UserName": "cortex",
     "GroupName": "staff",
     "ProgramArguments": [
@@ -89,31 +73,16 @@ expected = {
     "StandardOutPath": f"{repo_root}/.run/server.out.log",
     "StandardErrorPath": f"{repo_root}/.run/server.err.log",
 }
-if not isinstance(target, dict) or set(target) != set(expected):
-    raise SystemExit("FATAL: target LaunchDaemon keys are not the exact allowlist")
-for key, value in expected.items():
-    if target.get(key) != value:
-        raise SystemExit(f"FATAL: target LaunchDaemon {key} contract is invalid")
+if not isinstance(payload, dict) or set(payload) != set(expected_payload):
+    raise SystemExit(f"FATAL: LaunchDaemon keys are not the exact allowlist in {path}")
+for key, expected_value in expected_payload.items():
+    if payload.get(key) != expected_value:
+        raise SystemExit(f"FATAL: wrong LaunchDaemon {key} contract in {path}")
 PY
-}
-
-validate_definitions "$LEGACY_TEMPLATE" "$TARGET_TEMPLATE"
-
-if [[ ! -f "$SHARED_DEFINITION_INSTALLER" ]]; then
-  echo "FATAL: shared LaunchDaemon definition installer is missing: $SHARED_DEFINITION_INSTALLER" >&2
-  exit 1
-fi
-if [[ ! -f "$SERVER_RELEASE_OPERATOR" ]]; then
-  echo "FATAL: shared server-release operator is missing: $SERVER_RELEASE_OPERATOR" >&2
-  exit 1
-fi
 
 if [[ "$MODE" == "check" ]]; then
-  "$NODE" "$SHARED_DEFINITION_INSTALLER" \
-    --check \
-    --definition "$LABEL=$TARGET_TEMPLATE"
-  echo "VALID: tracked Handmark legacy evidence and immutable-server definition"
-  echo "docs/application-storage-cutover.md is completed historical evidence; current runtime state belongs in the root migration ledger."
+  echo "VALID: Handmark LaunchDaemon template"
+  echo "No service definition was installed and no service was loaded or restarted."
   exit 0
 fi
 
@@ -121,135 +90,51 @@ if [[ "$SOURCE_ROOT" != "$INSTALL_ROOT" ]]; then
   echo "FATAL: --apply is allowed only from the canonical production checkout: $INSTALL_ROOT" >&2
   exit 1
 fi
-readonly EXPECTED_OPERATOR_UID="$(/usr/bin/id -u cortex)"
-if [[ "$EUID" -ne "$EXPECTED_OPERATOR_UID" ]]; then
-  echo "FATAL: --apply must run directly as the cortex user, never through sudo." >&2
-  exit 1
-fi
-set +e
-/bin/launchctl print "system/$LABEL" >/dev/null 2>&1
-launchctl_status=$?
-set -e
-if [[ "$launchctl_status" -eq 0 ]]; then
-  echo "FATAL: $LABEL is still loaded; stop and remove the legacy definition through the authorised cutover before installing the target." >&2
-  exit 1
-fi
-if [[ "$launchctl_status" -ne 113 ]]; then
-  echo "FATAL: unable to prove that $LABEL is absent from the system launchd domain (launchctl status $launchctl_status)." >&2
-  exit 1
-fi
 
+readonly SELECTED_ROOT="$INSTALL_ROOT/.run/site-releases/server/current-server"
 /usr/bin/python3 - \
-  "$INSTALL_ROOT/.env.web" \
-  "$INSTALL_ROOT/data/handmark.sqlite" \
   "$INSTALL_ROOT" \
-  "$INSTALL_ROOT/data" \
-  "$EXPECTED_OPERATOR_UID" <<'PY'
+  "$SELECTED_ROOT/server-release.json" \
+  "$SELECTED_ROOT/artifact/server/dist/index.js" \
+  "$INSTALL_ROOT/.env.web" \
+  "$INSTALL_ROOT/data/handmark.sqlite" <<'PY'
 import os
 import stat
 import sys
 
-private_environment, database, operational_root, data_directory, expected_uid_text = sys.argv[1:]
-expected_uid = int(expected_uid_text)
-for path, require_private in ((operational_root, False), (data_directory, True)):
+repo_root, identity, entrypoint, private_environment, database = sys.argv[1:]
+release_root = os.path.realpath(os.path.join(repo_root, ".run", "site-releases", "server"))
+for path in (identity, entrypoint):
     try:
-        metadata = os.lstat(path)
+        metadata = os.stat(path)
     except OSError as error:
-        raise SystemExit(f"FATAL: target cutover directory is unavailable: {path}: {error}")
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or metadata.st_uid != expected_uid
-        or os.path.realpath(path) != path
-    ):
-        raise SystemExit(
-            f"FATAL: target cutover directory must be one current-user-owned real directory: {path}"
-        )
-    if require_private and stat.S_IMODE(metadata.st_mode) != 0o700:
-        raise SystemExit(
-            f"FATAL: target data directory must already be mode 0700: {path}"
-        )
-if os.path.dirname(database) != data_directory:
-    raise SystemExit("FATAL: target database must remain directly inside the proven data directory")
+        raise SystemExit(f"FATAL: selected server release is incomplete: {path}: {error}")
+    resolved = os.path.realpath(path)
+    if os.path.commonpath((release_root, resolved)) != release_root or not stat.S_ISREG(metadata.st_mode):
+        raise SystemExit(f"FATAL: selected server release path is unsafe: {path}")
 for path in (private_environment, database):
     try:
         metadata = os.lstat(path)
     except OSError as error:
-        raise SystemExit(f"FATAL: target cutover file is unavailable: {path}: {error}")
+        raise SystemExit(f"FATAL: private Handmark file is unavailable: {path}: {error}")
     if (
         not stat.S_ISREG(metadata.st_mode)
         or metadata.st_nlink != 1
-        or metadata.st_uid != expected_uid
+        or metadata.st_uid != os.geteuid()
         or stat.S_IMODE(metadata.st_mode) != 0o600
     ):
         raise SystemExit(
-            f"FATAL: target cutover file must be one owned mode-0600 regular file: {path}"
+            f"FATAL: private Handmark file must be one owned mode-0600 regular file: {path}"
         )
 PY
 
-if [[ -e "$TARGET" || -L "$TARGET" ]]; then
-  if ! /usr/bin/cmp -s "$TARGET_TEMPLATE" "$TARGET"; then
-    echo "FATAL: a different LaunchDaemon definition exists at $TARGET; review and remove it separately after the legacy service is stopped." >&2
-    exit 1
-  fi
+if [[ ! -f "$SHARED_INSTALLER" ]]; then
+  echo "FATAL: shared LaunchDaemon definition installer is missing: $SHARED_INSTALLER" >&2
+  exit 1
 fi
 
-release_status="$("$NODE" "$SERVER_RELEASE_OPERATOR" --site handmark --status)"
-/usr/bin/python3 - "$release_status" <<'PY'
-import re
-import sys
-
-lines = sys.argv[1].splitlines()
-if not lines or lines[0] != "status: handmark running-unknown":
-    raise SystemExit("FATAL: Handmark does not have one authenticated selected server release while its service is unloaded")
-if (
-    len(lines) < 5
-    or re.fullmatch(
-        r"desired release: [A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?",
-        lines[1],
-    )
-    is None
-):
-    raise SystemExit("FATAL: Handmark selected server release identity is missing or invalid")
-if (
-    lines[2] != "running release: (unknown)"
-    or lines[3] != "selection: activation generation verified"
-    or lines[4] != "web com.handmark.server: running-unknown"
-):
-    raise SystemExit("FATAL: Handmark server-release status does not prove the expected offline cutover state")
-PY
-printf '%s\n' "$release_status"
-
-readonly STAGING_ROOT="$(/usr/bin/mktemp -d "$INSTALL_ROOT/.run/launchdaemon-definition.XXXXXX")"
-readonly STAGED_TEMPLATE="$STAGING_ROOT/$LABEL.plist"
-cleanup_staging() {
-  local original_status=$?
-  local cleanup_failed=0
-  trap - EXIT
-  if [[ -e "$STAGED_TEMPLATE" || -L "$STAGED_TEMPLATE" ]]; then
-    if ! /bin/rm -f -- "$STAGED_TEMPLATE"; then
-      echo "FATAL: could not remove the staged LaunchDaemon definition: $STAGED_TEMPLATE" >&2
-      cleanup_failed=1
-    fi
-  fi
-  if ! /bin/rmdir -- "$STAGING_ROOT"; then
-    echo "FATAL: could not remove the staged LaunchDaemon directory: $STAGING_ROOT" >&2
-    cleanup_failed=1
-  fi
-  if [[ "$original_status" -ne 0 && "$cleanup_failed" -ne 0 ]]; then
-    echo "FATAL: LaunchDaemon installation and staged-definition cleanup both failed." >&2
-  fi
-  if [[ "$original_status" -eq 0 && "$cleanup_failed" -ne 0 ]]; then
-    exit 1
-  fi
-  exit "$original_status"
-}
-trap cleanup_staging EXIT
-/bin/cp "$TARGET_TEMPLATE" "$STAGED_TEMPLATE"
-/bin/chmod 0400 "$STAGED_TEMPLATE"
-/usr/bin/plutil -lint "$STAGED_TEMPLATE" >/dev/null
-validate_definitions "$LEGACY_TEMPLATE" "$STAGED_TEMPLATE"
-
-"$NODE" "$SHARED_DEFINITION_INSTALLER" \
+/opt/homebrew/bin/node "$SHARED_INSTALLER" \
   --apply \
-  --definition "$LABEL=$STAGED_TEMPLATE"
-echo "No service was loaded or restarted. Any future activation requires separate restart authorisation and complete selected-release verification; docs/application-storage-cutover.md is historical evidence."
+  --definition "$LABEL=$RENDERED"
+echo "No service was loaded or restarted."
+echo "Activation requires separate administrator authorisation and full server-release verification."

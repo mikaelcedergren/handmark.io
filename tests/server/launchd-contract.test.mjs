@@ -17,11 +17,10 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const installer = path.join(repoRoot, 'bin', 'install-server-daemon');
 const label = 'com.handmark.server';
-const legacyTemplate = path.join(repoRoot, 'launchd', `${label}.plist`);
-const targetTemplate = path.join(repoRoot, 'launchd', `${label}.target.plist`);
+const template = path.join(repoRoot, 'launchd', `${label}.plist`);
 
-test('target LaunchDaemon selects the immutable server without embedding secrets', () => {
-  const source = readFileSync(targetTemplate, 'utf8');
+test('LaunchDaemon selects the immutable server without embedding secrets', () => {
+  const source = readFileSync(template, 'utf8');
   assert.match(
     source,
     /\/\.run\/site-releases\/server\/current-server\/artifact\/server\/dist\/index\.js</,
@@ -41,29 +40,9 @@ test('daemon installer is check-first, copy-safe, definition-only, and activatio
   assert.match(source, /current-server\/artifact\/server\/dist\/index\.js/);
   assert.match(source, /\.env\.web/);
   assert.match(source, /data\/handmark\.sqlite/);
-  assert.match(source, /launchctl print/);
-  assert.match(source, /launchctl_status/);
-  assert.match(source, /\[\[ "\$launchctl_status" -ne 113 \]\]/);
-  assert.match(source, /id -u cortex/);
-  assert.match(source, /"\$EUID" -ne "\$EXPECTED_OPERATOR_UID"/);
-  assert.match(source, /metadata\.st_uid != expected_uid/);
-  assert.match(source, /target data directory must already be mode 0700/);
-  assert.match(source, /os\.path\.realpath\(path\) != path/);
-  assert.match(source, /os\.path\.dirname\(database\) != data_directory/);
-  assert.doesNotMatch(source, /chmod\([^\n]*data_directory|chmod[^\n]*0700/);
   assert.match(source, /server-ops\/bin\/install-launchdaemon-definitions\.mjs/);
-  assert.match(source, /server-ops\/bin\/server-release\.mjs/);
-  assert.match(source, /--site handmark --status/);
-  assert.match(source, /status: handmark running-unknown/);
-  assert.match(source, /selection: activation generation verified/);
   assert.match(source, /--check/);
   assert.match(source, /--apply/);
-  assert.match(source, /mktemp -d/);
-  assert.match(source, /validate_definitions "\$LEGACY_TEMPLATE" "\$STAGED_TEMPLATE"/);
-  assert.match(source, /trap cleanup_staging EXIT/);
-  assert.match(source, /installation and staged-definition cleanup both failed/);
-  assert.match(source, /--definition "\$LABEL=\$STAGED_TEMPLATE"/);
-  assert.doesNotMatch(source, /sudo install|\/usr\/bin\/install/);
   assert.doesNotMatch(source, /\b(?:bootout|bootstrap|kickstart)\b/);
 
   if (process.platform !== 'darwin') {
@@ -72,68 +51,40 @@ test('daemon installer is check-first, copy-safe, definition-only, and activatio
   }
 
   const direct = execFileSync(installer, [], { cwd: repoRoot, encoding: 'utf8' });
-  assert.match(direct, /VALID: tracked Handmark legacy evidence and immutable-server definition/);
-  assert.match(
-    direct,
-    /application-storage-cutover\.md is completed historical evidence; current runtime state belongs in the root migration ledger/,
-  );
+  assert.match(direct, /VALID: Handmark LaunchDaemon template/);
   assert.match(direct, /No service definition was installed/);
-  const explicit = execFileSync(installer, ['--check'], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-  });
-  assert.equal(explicit, direct);
+  assert.equal(execFileSync(installer, ['--check'], { cwd: repoRoot, encoding: 'utf8' }), direct);
 
   const copiedRoot = makeCopiedInstaller(t);
   const copiedInstaller = path.join(copiedRoot, 'bin', 'install-server-daemon');
-  const copiedCheck = execFileSync(copiedInstaller, ['--check'], {
-    cwd: copiedRoot,
-    encoding: 'utf8',
-  });
-  assert.equal(copiedCheck, direct);
+  assert.equal(
+    execFileSync(copiedInstaller, ['--check'], { cwd: copiedRoot, encoding: 'utf8' }),
+    direct,
+  );
   assert.throws(
-    () =>
-      execFileSync(copiedInstaller, ['--apply'], {
-        cwd: copiedRoot,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }),
-    (error) =>
-      error instanceof Error &&
-      /--apply is allowed only from the canonical production checkout/.test(
-        'stderr' in error ? String(error.stderr) : error.message,
-      ),
+    () => execFileSync(copiedInstaller, ['--apply'], { cwd: copiedRoot }),
+    /--apply is allowed only from the canonical production checkout/,
   );
 });
 
-test('daemon check rejects a copied target definition whose semantics drift', (t) => {
+test('daemon check rejects a copied definition whose semantics drift', (t) => {
   if (process.platform !== 'darwin') {
     t.diagnostic('Mac-only installer execution is covered by source contract on this platform.');
     return;
   }
-
   const copiedRoot = makeCopiedInstaller(t);
   const copiedInstaller = path.join(copiedRoot, 'bin', 'install-server-daemon');
-  const copiedTarget = path.join(copiedRoot, 'launchd', `${label}.target.plist`);
+  const copiedTemplate = path.join(copiedRoot, 'launchd', `${label}.plist`);
   writeFileSync(
-    copiedTarget,
-    readFileSync(copiedTarget, 'utf8').replace(
+    copiedTemplate,
+    readFileSync(copiedTemplate, 'utf8').replace(
       '<string>127.0.0.1</string>',
       '<string>0.0.0.0</string>',
     ),
   );
   assert.throws(
-    () =>
-      execFileSync(copiedInstaller, ['--check'], {
-        cwd: copiedRoot,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }),
-    (error) =>
-      error instanceof Error &&
-      /target LaunchDaemon EnvironmentVariables contract is invalid/.test(
-        'stderr' in error ? String(error.stderr) : error.message,
-      ),
+    () => execFileSync(copiedInstaller, ['--check'], { cwd: copiedRoot }),
+    /wrong LaunchDaemon EnvironmentVariables contract/,
   );
 });
 
@@ -145,7 +96,6 @@ function makeCopiedInstaller(t) {
   const copiedInstaller = path.join(copiedRoot, 'bin', 'install-server-daemon');
   copyFileSync(installer, copiedInstaller);
   chmodSync(copiedInstaller, 0o755);
-  copyFileSync(legacyTemplate, path.join(copiedRoot, 'launchd', `${label}.plist`));
-  copyFileSync(targetTemplate, path.join(copiedRoot, 'launchd', `${label}.target.plist`));
+  copyFileSync(template, path.join(copiedRoot, 'launchd', `${label}.plist`));
   return copiedRoot;
 }

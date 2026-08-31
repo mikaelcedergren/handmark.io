@@ -27,7 +27,6 @@ export interface HandmarkEnvironment {
   readonly gatePassword: string;
   readonly host: string;
   readonly isProduction: boolean;
-  readonly legacyApplicationsPath: string;
   readonly mutationOrigins: readonly string[];
   readonly operationalRoot: string;
   readonly port: number;
@@ -101,7 +100,6 @@ export function loadHandmarkEnvironment(
     environment['DB_PATH'] ?? path.join(dataDirectory, 'handmark.sqlite'),
     'DB_PATH',
   );
-  const legacyApplicationsPath = path.join(dataDirectory, 'applications.jsonl');
   const browserDirOverride = environment['SITE_BROWSER_DIR'];
   if (browserDirOverride !== undefined) {
     if (!path.isAbsolute(browserDirOverride)) {
@@ -123,7 +121,6 @@ export function loadHandmarkEnvironment(
     gatePassword,
     host,
     isProduction,
-    legacyApplicationsPath,
     mutationOrigins,
     operationalRoot,
     port,

@@ -2,7 +2,6 @@ import {
   openOwnedSqliteDatabase,
   type OwnedSqliteDatabase,
   type OwnedSqliteOpenCheckpoint,
-  type ReadonlySyncSqliteDatabase,
   type SqliteRow,
   type SyncSqliteDatabase,
 } from '@mikaelcedergren/cx-framework/server/sqlite';
@@ -20,16 +19,11 @@ import {
   deleteApplicationsAtOrBefore,
   HANDMARK_APPLICATION_MIGRATIONS,
   migrateApplicationSchema,
-  migrateApplicationSchemaWithLegacyReceipt,
-  readMigrationSafeLegacyApplicationImportReceipt,
-  readVerifiedLegacyApplicationImportReceipt,
-  type ApplicationImportReceipt,
+  verifyApplicationDatabaseBeforeWrite,
   verifyApplicationSchema,
 } from './application-schema.js';
 
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
-const LEGACY_IMPORT_REQUIRED_MESSAGE =
-  'Legacy applications must be imported into the selected SQLite database before startup.';
 
 interface CapacityRow extends SqliteRow {
   readonly canonical_bytes: number | bigint;
@@ -49,7 +43,7 @@ interface MaintenanceTimer {
   unref(): unknown;
 }
 
-export type ApplicationRepositoryOpenCheckpoint = OwnedSqliteOpenCheckpoint | 'receipt_verified';
+export type ApplicationRepositoryOpenCheckpoint = OwnedSqliteOpenCheckpoint;
 
 export interface OpenApplicationRepositoryOptions {
   readonly cancelTimer?: (timer: MaintenanceTimer) => void;
@@ -58,18 +52,9 @@ export interface OpenApplicationRepositoryOptions {
   readonly onOpenCheckpoint?: (checkpoint: ApplicationRepositoryOpenCheckpoint) => void;
   readonly onMaintenanceError?: (error: unknown) => void;
   readonly operationalRoot: string;
-  readonly requireLegacyImportReceipt?: boolean;
-  readonly requiredLegacyImportAuthority?: LegacyApplicationImportAuthority;
+  readonly requireExisting?: boolean;
   readonly scheduleTimer?: (callback: () => void, delayMs: number) => MaintenanceTimer;
 }
-
-export type LegacyApplicationImportAuthority =
-  | Readonly<{ readonly kind: 'absent' }>
-  | Readonly<{
-      readonly kind: 'present_jsonl';
-      readonly sourceBytes: number;
-      readonly sourceSha256: string;
-    }>;
 
 export interface ApplicationRepository {
   append(record: ApplicationRecord, acceptedAt: number): number | undefined;
@@ -101,8 +86,7 @@ export function openApplicationRepository({
   onOpenCheckpoint = () => undefined,
   onMaintenanceError = (error) => console.error('[handmark] application retention failed', error),
   operationalRoot,
-  requireLegacyImportReceipt = false,
-  requiredLegacyImportAuthority,
+  requireExisting = false,
   scheduleTimer = (callback, delayMs) => setTimeout(callback, delayMs),
 }: OpenApplicationRepositoryOptions): ApplicationRepository {
   if (
@@ -112,57 +96,29 @@ export function openApplicationRepository({
   ) {
     throw new Error('Application repository callbacks must be functions.');
   }
-  if (requiredLegacyImportAuthority) {
-    assertLegacyImportAuthority(requiredLegacyImportAuthority);
-  }
-  const receiptRequired = requireLegacyImportReceipt || requiredLegacyImportAuthority !== undefined;
-  let writableReceipt: ApplicationImportReceipt | undefined;
   let owned: OwnedSqliteDatabase;
-  try {
-    owned = receiptRequired
-      ? openOwnedSqliteDatabase({
-          configuration: {
-            busyTimeoutMs: SQLITE_BUSY_TIMEOUT_MS,
-            journalMode: 'wal',
-          },
-          databasePath,
-          operationalRoot,
-          requireExisting: true,
-          beforeWrite(database) {
-            writableReceipt = assertRequiredLegacyImportReceiptForMigration(
-              database,
-              requiredLegacyImportAuthority,
-            );
-            onOpenCheckpoint('receipt_verified');
-          },
-          onOpenCheckpoint,
-        })
-      : openOwnedSqliteDatabase({
-          configuration: {
-            busyTimeoutMs: SQLITE_BUSY_TIMEOUT_MS,
-            journalMode: 'wal',
-          },
-          databasePath,
-          operationalRoot,
-          onOpenCheckpoint,
-        });
-  } catch (error) {
-    if (receiptRequired && hasNodeErrorCode(error, 'ENOENT')) {
-      throw new Error(LEGACY_IMPORT_REQUIRED_MESSAGE, { cause: error });
-    }
-    throw error;
-  }
+  const storageOptions = {
+    configuration: {
+      busyTimeoutMs: SQLITE_BUSY_TIMEOUT_MS,
+      journalMode: 'wal',
+    },
+    databasePath,
+    operationalRoot,
+    onOpenCheckpoint,
+  } as const;
+  owned = requireExisting
+    ? openOwnedSqliteDatabase({
+        ...storageOptions,
+        beforeWrite: verifyApplicationDatabaseBeforeWrite,
+        requireExisting: true,
+      })
+    : openOwnedSqliteDatabase(storageOptions);
   const database = owned.database;
   let closed = false;
   let maintenanceStarted = false;
   let maintenanceTimer: MaintenanceTimer | undefined;
   try {
-    if (writableReceipt) {
-      migrateApplicationSchemaWithLegacyReceipt(database, writableReceipt);
-      assertRequiredLegacyImportReceipt(database, requiredLegacyImportAuthority);
-    } else {
-      migrateApplicationSchema(database);
-    }
+    migrateApplicationSchema(database);
     configureDatabaseStorage(database);
     owned.verifyStorage();
     verifyApplicationSchema(database);
@@ -442,93 +398,8 @@ function assertEpochMilliseconds(value: number, label: string): void {
   }
 }
 
-function assertRequiredLegacyImportReceipt(
-  database: SyncSqliteDatabase,
-  authority: LegacyApplicationImportAuthority | undefined,
-): void {
-  const receipt = readVerifiedLegacyApplicationImportReceipt(database);
-  if (!receipt) {
-    throw new Error('Selected SQLite database does not contain a sealed legacy import receipt.');
-  }
-  assertReceiptMatchesAuthority(receipt, authority);
-}
-
-function assertRequiredLegacyImportReceiptForMigration(
-  database: ReadonlySyncSqliteDatabase,
-  authority: LegacyApplicationImportAuthority | undefined,
-): ApplicationImportReceipt {
-  const receipt = readMigrationSafeLegacyApplicationImportReceipt(database);
-  if (!receipt) {
-    throw new Error('Selected SQLite database does not contain a sealed legacy import receipt.');
-  }
-  assertReceiptMatchesAuthority(receipt, authority);
-  return receipt;
-}
-
-function assertReceiptMatchesAuthority(
-  receipt: ApplicationImportReceipt,
-  authority: LegacyApplicationImportAuthority | undefined,
-): void {
-  if (!authority) return;
-  const matches =
-    authority.kind === 'absent'
-      ? receipt.authorityKind === 'legacy_empty_absence_v1'
-      : receiptMatchesPresentSource(receipt, authority);
-  if (!matches) {
-    throw new Error(
-      'Selected SQLite database does not prove an exact import of the legacy application source.',
-    );
-  }
-}
-
-function receiptMatchesPresentSource(
-  receipt: ApplicationImportReceipt,
-  authority: Extract<LegacyApplicationImportAuthority, { readonly kind: 'present_jsonl' }>,
-): boolean {
-  return (
-    receipt.authorityKind === 'legacy_jsonl_v1' &&
-    receipt.sourceBytes === authority.sourceBytes &&
-    receipt.sourceSha256 === authority.sourceSha256
-  );
-}
-
-function assertLegacyImportAuthority(authority: LegacyApplicationImportAuthority): void {
-  if (authority.kind === 'absent') {
-    if (Object.keys(authority).length !== 1) {
-      throw new Error('Absent legacy application authority must contain only its kind.');
-    }
-    return;
-  }
-  if (
-    authority.kind !== 'present_jsonl' ||
-    Object.keys(authority).length !== 3 ||
-    !Object.hasOwn(authority, 'kind') ||
-    !Object.hasOwn(authority, 'sourceBytes') ||
-    !Object.hasOwn(authority, 'sourceSha256') ||
-    !Number.isSafeInteger(authority.sourceBytes) ||
-    authority.sourceBytes < 0 ||
-    !/^[0-9a-f]{64}$/.test(authority.sourceSha256)
-  ) {
-    throw new Error('Legacy application import authority proof is invalid.');
-  }
-}
-
 function isSqliteFull(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const candidate = error as { readonly errcode?: unknown; readonly errstr?: unknown };
   return candidate.errcode === 13 || candidate.errstr === 'database or disk is full';
-}
-
-function hasNodeErrorCode(error: unknown, code: string): boolean {
-  const pending: unknown[] = [error];
-  const seen = new Set<unknown>();
-  while (pending.length > 0) {
-    const candidate = pending.pop();
-    if (!candidate || typeof candidate !== 'object' || seen.has(candidate)) continue;
-    seen.add(candidate);
-    if ('code' in candidate && candidate.code === code) return true;
-    if ('cause' in candidate) pending.push(candidate.cause);
-    if (candidate instanceof AggregateError) pending.push(...candidate.errors);
-  }
-  return false;
 }

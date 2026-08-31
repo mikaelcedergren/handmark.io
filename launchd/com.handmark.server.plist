@@ -13,7 +13,7 @@
     <key>ProgramArguments</key>
     <array>
       <string>/opt/homebrew/bin/node</string>
-      <string>server/index.mjs</string>
+      <string>/Users/cortex/Development/handmark.io/.run/site-releases/server/current-server/artifact/server/dist/index.js</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -21,14 +21,22 @@
 
     <key>EnvironmentVariables</key>
     <dict>
-      <key>PATH</key>
-      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+      <key>APP_BASE_URL</key>
+      <string>https://handmark.io</string>
+      <key>CX_SERVER_RELEASE_IDENTITY_FILE</key>
+      <string>/Users/cortex/Development/handmark.io/.run/site-releases/server/current-server/server-release.json</string>
+      <key>DATA_DIR</key>
+      <string>data</string>
+      <key>DB_PATH</key>
+      <string>data/handmark.sqlite</string>
       <key>HOST</key>
       <string>127.0.0.1</string>
-      <key>PORT</key>
-      <string>3000</string>
       <key>NODE_ENV</key>
       <string>production</string>
+      <key>PATH</key>
+      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+      <key>PORT</key>
+      <string>3000</string>
     </dict>
 
     <key>RunAtLoad</key>

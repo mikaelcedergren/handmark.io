@@ -427,7 +427,7 @@ function readStoredApplication(filePath) {
     const canonical = Buffer.from(row.record_json);
     const canonicalHash = createHash('sha256').update(canonical).digest('hex');
     if (canonicalHash !== row.record_hash) {
-      throw new Error('Handmark E2E canonical application hash does not match its SQLite receipt.');
+      throw new Error('Handmark E2E canonical application hash does not match its stored hash.');
     }
     return {
       intakeSequence: row.intake_sequence,

@@ -59,7 +59,6 @@ test('shutdown drains an accepted mutation after its JSON body has been fully pa
     gatePassword: 'handmark-test-password',
     host: '127.0.0.1',
     isProduction: false,
-    legacyApplicationsPath: path.join(root, 'applications.jsonl'),
     mutationOrigins: Object.freeze(['http://handmark.test']),
     operationalRoot: root,
     port: 4232,

@@ -72,18 +72,16 @@ test('ordinary production fails closed when its browser snapshot is missing', (t
   );
 });
 
-test('runtime proves browser availability before legacy-authority and SQLite access or HTTP listen', () => {
+test('runtime proves browser availability before SQLite access or HTTP listen', () => {
   const source = fs.readFileSync(new URL('./runtime.ts', import.meta.url), 'utf8');
   const startup = source.indexOf('export async function startHandmarkServer');
   const browserAssertion = source.indexOf('assertBrowserServingForStartup({', startup);
-  const legacyAuthorityOpen = source.indexOf('openLegacyApplicationAuthorityProof({', startup);
   const databaseOpen = source.indexOf('openApplicationRepository({', startup);
   const listener = source.indexOf('await listenHttpApplication(', startup);
 
   assert.ok(startup >= 0);
   assert.ok(browserAssertion > startup);
-  assert.ok(legacyAuthorityOpen > browserAssertion);
-  assert.ok(databaseOpen > legacyAuthorityOpen);
+  assert.ok(databaseOpen > browserAssertion);
   assert.ok(listener > databaseOpen);
 
   const browserSource = fs.readFileSync(new URL('./browser-serving.ts', import.meta.url), 'utf8');
@@ -105,7 +103,6 @@ function productionEnvironment(
     gatePassword: 'handmark-test-password',
     host: '127.0.0.1',
     isProduction: true,
-    legacyApplicationsPath: path.join(operationalRoot, 'data', 'applications.jsonl'),
     mutationOrigins: Object.freeze([
       releaseValidation ? 'http://127.0.0.1' : 'https://handmark.io',
     ]),

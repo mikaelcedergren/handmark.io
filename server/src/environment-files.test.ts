@@ -22,7 +22,7 @@ test('target environment loading delegates private file I/O to the framework bef
   assert.doesNotMatch(entrypointSource, /import\s+\{\s*startHandmarkServer\s*\}\s+from/);
 });
 
-test('target loads only its private web file and ignores legacy .env', (t) => {
+test('target loads only its private web file and ignores unowned dotenv files', (t) => {
   const root = temporaryRoot(t);
   fs.writeFileSync(
     path.join(root, '.env.web'),
@@ -31,7 +31,7 @@ test('target loads only its private web file and ignores legacy .env', (t) => {
   );
   fs.writeFileSync(
     path.join(root, '.env'),
-    'HANDMARK_PASSWORD=legacy-password\nSESSION_SECRET=legacy-session-secret\nAPP_BASE_URL=https://legacy.invalid\n',
+    'HANDMARK_PASSWORD=ignored-password\nSESSION_SECRET=ignored-session-secret\nAPP_BASE_URL=https://ignored.invalid\n',
     { mode: 0o600 },
   );
 
@@ -138,7 +138,7 @@ test('target private-file reads reject oversized, growing, and invalid UTF-8 inp
   assert.throws(() => loadHandmarkEnvironmentFile({}), /exceeds 64 KiB/);
 });
 
-test('test, explicit disable, and release validation never read private or legacy files', (t) => {
+test('test, explicit disable, and release validation never read private or unowned files', (t) => {
   const root = temporaryRoot(t);
   fs.writeFileSync(
     path.join(root, '.env.web'),
@@ -147,7 +147,9 @@ test('test, explicit disable, and release validation never read private or legac
       mode: 0o600,
     },
   );
-  fs.writeFileSync(path.join(root, '.env'), 'HANDMARK_PASSWORD=legacy-password\n', { mode: 0o600 });
+  fs.writeFileSync(path.join(root, '.env'), 'HANDMARK_PASSWORD=ignored-password\n', {
+    mode: 0o600,
+  });
 
   const bypassedEnvironments: NodeJS.ProcessEnv[] = [
     { NODE_ENV: 'test' },
