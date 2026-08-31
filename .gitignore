@@ -4,10 +4,7 @@ node_modules/
 .env.*
 !.env.example
 !.env.web.example
-data/*.json
-data/*.jsonl
-data/*.sqlite*
-!data/.gitkeep
+data/
 test-results/
 dist/
 .angular/
