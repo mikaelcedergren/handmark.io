@@ -9,7 +9,7 @@
     "node": ">=26 <27"
   },
   "scripts": {
-    "dev": "pnpm run build:dev && concurrently -k -n browser,server -c blue,green \"pnpm run dev:browser\" \"pnpm run dev:server\"",
+    "dev": "pnpm favicon:check && pnpm run build:dev && concurrently -k -n browser,server -c blue,green \"pnpm run dev:browser\" \"pnpm run dev:server\"",
     "dev:browser": "ng build --configuration local --watch --output-path .run/dev/browser-output",
     "dev:server": "env HANDMARK_LOAD_ENV_FILE=false APP_BASE_URL=http://127.0.0.1:4230 DATA_DIR=.run/dev/data DB_PATH=.run/dev/data/handmark.sqlite HANDMARK_PASSWORD=handmark-local-development-password HOST=127.0.0.1 NODE_ENV=development PORT=4230 SESSION_SECRET=handmark-local-development-session-secret SITE_BROWSER_DIR=\"$PWD/.run/dev/browser-output/browser\" server/node_modules/.bin/tsx watch server/src/index.ts",
     "build": "pnpm run build:browser && pnpm run build:server",
@@ -17,8 +17,8 @@
     "build:server": "pnpm --filter handmark-server run build",
     "build:server:release": "node server/node_modules/@mikaelcedergren/cx-framework/scripts/cx-server-artifact.mjs --package handmark-server",
     "build:release": "ng build --configuration prod --output-path \"$SITE_RELEASE_DIR\"",
-    "build:local": "ng build --configuration local",
-    "build:dev": "ng build --configuration local --output-path .run/dev/browser-output",
+    "build:local": "pnpm favicon:check && ng build --configuration local",
+    "build:dev": "pnpm favicon:check && ng build --configuration local --output-path .run/dev/browser-output",
     "start": "node server/dist/index.js",
     "typecheck": "pnpm run typecheck:app && pnpm run typecheck:server",
     "typecheck:app": "tsc -p tsconfig.app.json --noEmit",
@@ -29,8 +29,10 @@
     "e2e:install": "playwright install chromium",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "favicon:generate": "cx-development-favicon --apply",
+    "favicon:check": "cx-development-favicon",
     "platform:check": "cx-platform-check --root .",
-    "check": "pnpm run format:check && pnpm run platform:check && pnpm run typecheck && pnpm run test && pnpm run build"
+    "check": "pnpm run format:check && pnpm run favicon:check && pnpm run platform:check && pnpm run typecheck && pnpm run test && pnpm run build"
   },
   "dependencies": {
     "@angular/cdk": "^22.0.6",

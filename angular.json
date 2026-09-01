@@ -49,6 +49,10 @@
           },
           "configurations": {
             "local": {
+              "index": {
+                "input": "src/index.development.html",
+                "output": "index.html"
+              },
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
