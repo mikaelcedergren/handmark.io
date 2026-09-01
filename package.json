@@ -29,7 +29,7 @@
     "e2e:install": "playwright install chromium",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "platform:check": "node server/node_modules/@mikaelcedergren/cx-framework/scripts/check-product.mjs --root .",
+    "platform:check": "cx-platform-check --root .",
     "check": "pnpm run format:check && pnpm run platform:check && pnpm run typecheck && pnpm run test && pnpm run build"
   },
   "dependencies": {
