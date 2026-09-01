@@ -85,9 +85,10 @@ test('runtime proves browser availability before SQLite access or HTTP listen', 
   assert.ok(listener > databaseOpen);
 
   const browserSource = fs.readFileSync(new URL('./browser-serving.ts', import.meta.url), 'utf8');
+  assert.match(browserSource, /createSinglePageApplicationMiddlewareStack\(\{/);
   assert.doesNotMatch(
     browserSource,
-    /Handmark browser release is missing|readActiveBrowserRelease/,
+    /Handmark browser release is missing|readActiveBrowserRelease|browserServing\.staticMiddleware|retainedReleaseAssetMiddleware|missingAssetMiddleware/,
   );
 });
 
