@@ -155,6 +155,14 @@ The canonical non-destructive gate is:
 pnpm check
 ```
 
+For ordinary development changes, use the repository-owned change-aware proof:
+
+```bash
+pnpm verify:change
+```
+
+Its product-specific map and options are documented in `DEVELOPMENT-VERIFICATION.md`.
+
 The isolated browser test is:
 
 ```bash
