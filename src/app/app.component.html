@@ -41,7 +41,7 @@
       </div>
 
       <aside class="proof-showcase" aria-label="Verified member proof page preview">
-        <cx-card class="proof-page-card" padding="none">
+        <cx-card class="proof-page-card">
           <div class="proof-page theme-light">
             <div class="proof-page-top">
               <img src="/assets/handmark-symbol.svg?v=20260603-2" alt="" />
@@ -77,19 +77,13 @@
             </dl>
           </div>
         </cx-card>
-        <cx-card class="badge-preview" padding="large">
+        <cx-card class="badge-preview">
           <div class="badge-preview-content">
             <span>Badge license</span>
             <strong>Handmark verified</strong>
           </div>
         </cx-card>
-        <cx-card
-          class="review-note"
-          heading="Review outcome"
-          icon="check"
-          mood="success"
-          padding="large"
-        >
+        <cx-card class="review-note" heading="Review outcome" icon="check" mood="success">
           <strong>Approved after process walkthrough</strong>
           <p class="cx-text-muted">
             Identity, evidence, and the human role are checked before the mark is issued.
@@ -144,7 +138,7 @@
     </div>
     <div class="buyer-grid">
       <article class="buyer-card">
-        <cx-card padding="none">
+        <cx-card>
           <div class="product-card">
             <div class="product-media theme-light">
               <div class="work-preview" aria-hidden="true">
@@ -181,7 +175,7 @@
       </article>
 
       <article class="buyer-card">
-        <cx-card padding="large">
+        <cx-card>
           <div class="proof-card">
             <p class="proof-state">handmark.io/verify/mara-holt</p>
             <h3>Verified member record</h3>
@@ -211,7 +205,7 @@
         </p>
       </div>
       <div class="standard-list">
-        <cx-card padding="large">
+        <cx-card>
           <article class="standard-item">
             <span>01</span>
             <h3>Walkthrough required</h3>
@@ -221,7 +215,7 @@
             </p>
           </article>
         </cx-card>
-        <cx-card padding="large">
+        <cx-card>
           <article class="standard-item">
             <span>02</span>
             <h3>Evidence required</h3>
@@ -231,7 +225,7 @@
             </p>
           </article>
         </cx-card>
-        <cx-card padding="large">
+        <cx-card>
           <article class="standard-item">
             <span>03</span>
             <h3>No proof, no stamp</h3>
@@ -256,7 +250,7 @@
           month. If not approved, no subscription starts.
         </p>
       </div>
-      <cx-card class="membership-card" padding="large">
+      <cx-card class="membership-card">
         <article class="pricing-card">
           <div class="plan-top">
             <p class="plan-flag">Verification membership</p>
@@ -291,7 +285,7 @@
         id="application-form"
         (submit)="$event.preventDefault(); submitApplication()"
       >
-        <cx-card class="application-card" padding="large">
+        <cx-card class="application-card">
           <div class="application-card-content">
             <div class="membership-summary" aria-label="Selected review path">
               <span>Application path</span>
