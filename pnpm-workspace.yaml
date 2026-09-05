@@ -19,3 +19,6 @@ allowBuilds:
   esbuild: true
   lmdb: true
   msgpackr-extract: true
+
+patchedDependencies:
+  '@angular/build@22.0.8': patches/@angular__build@22.0.8.patch
