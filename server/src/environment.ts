@@ -35,7 +35,7 @@ export interface HandmarkEnvironment {
 }
 
 export function resolveHandmarkOperationalRoot(environment: Environment): string {
-  const nodeEnvironment = nodeEnvironmentValue(environment);
+  nodeEnvironmentValue(environment);
   const validation = releaseValidationEnvironmentValue(environment);
   const override = environment['CX_RUNTIME_ROOT'];
   if (override !== undefined && !validation) {
