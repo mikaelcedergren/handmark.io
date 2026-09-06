@@ -31,6 +31,12 @@
       <string>data/handmark.sqlite</string>
       <key>HOST</key>
       <string>127.0.0.1</string>
+      <key>CX_EXECUTION_SCOPE</key>
+      <string>production</string>
+      <key>CX_DATA_MODE</key>
+      <string>shared</string>
+      <key>CX_SCHEDULE_OWNER</key>
+      <string>true</string>
       <key>NODE_ENV</key>
       <string>production</string>
       <key>PATH</key>

@@ -97,6 +97,7 @@ function productionEnvironment(
   releaseValidation: boolean,
 ): HandmarkEnvironment {
   return Object.freeze({
+    execution: { executionScope: 'test', dataMode: 'isolated' as const, scheduleOwner: false },
     appOrigin: releaseValidation ? 'http://127.0.0.1' : 'https://handmark.io',
     browserDirOverride: undefined,
     dataDirectory: path.join(operationalRoot, 'data'),

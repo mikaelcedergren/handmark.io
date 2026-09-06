@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
   localBindHost,
+  resolveExecutionPolicy,
+  type ExecutionPolicy,
   nodeEnvironmentValue,
   portEnvironmentValue,
   releaseValidationEnvironmentValue,
@@ -20,6 +22,7 @@ export const HANDMARK_MANIFEST_FILE = fileURLToPath(
 export const HANDMARK_ARTIFACT_ROOT = path.dirname(HANDMARK_MANIFEST_FILE);
 
 export interface HandmarkEnvironment {
+  readonly execution: ExecutionPolicy;
   readonly appOrigin: string;
   readonly browserDirOverride: string | undefined;
   readonly dataDirectory: string;
@@ -55,6 +58,7 @@ export function loadHandmarkEnvironment(
 ): HandmarkEnvironment {
   const nodeEnvironment = nodeEnvironmentValue(environment);
   const releaseValidation = releaseValidationEnvironmentValue(environment);
+  const execution = resolveExecutionPolicy(environment);
   const operationalRoot = resolveHandmarkOperationalRoot(environment);
   const isProduction = nodeEnvironment === 'production';
   const port = portEnvironmentValue(environment, 'PORT', 3000);
@@ -63,12 +67,10 @@ export function loadHandmarkEnvironment(
   // composable without turning a development default into a release-validation bypass.
   const gatePassword = releaseValidation
     ? randomBase64UrlIdentifier(32)
-    : (environment['HANDMARK_PASSWORD'] ??
-      (isProduction ? '' : 'handmark-local-development-password'));
+    : (environment['HANDMARK_PASSWORD'] ?? '');
   const sessionSecret = releaseValidation
     ? randomBase64UrlIdentifier(32)
-    : (environment['SESSION_SECRET'] ??
-      (isProduction ? '' : 'handmark-local-development-session-secret'));
+    : (environment['SESSION_SECRET'] ?? '');
 
   if (gatePassword.length < 12) {
     throw new Error('HANDMARK_PASSWORD must contain at least 12 characters.');
@@ -89,7 +91,7 @@ export function loadHandmarkEnvironment(
       : [appOrigin],
   );
 
-  const defaultDataDirectory = isProduction || releaseValidation ? 'data' : '.run/dev/data';
+  const defaultDataDirectory = 'data';
   const dataDirectory = resolveMutablePath(
     operationalRoot,
     environment['DATA_DIR'] ?? defaultDataDirectory,
@@ -100,6 +102,13 @@ export function loadHandmarkEnvironment(
     environment['DB_PATH'] ?? path.join(dataDirectory, 'handmark.sqlite'),
     'DB_PATH',
   );
+  if (
+    execution.dataMode === 'shared' &&
+    (dataDirectory !== path.join(operationalRoot, 'data') ||
+      databasePath !== path.join(operationalRoot, 'data', 'handmark.sqlite'))
+  ) {
+    throw new Error('Shared Handmark data must use data/handmark.sqlite in the operational root.');
+  }
   const browserDirOverride = environment['SITE_BROWSER_DIR'];
   if (browserDirOverride !== undefined) {
     if (!path.isAbsolute(browserDirOverride)) {
@@ -114,6 +123,7 @@ export function loadHandmarkEnvironment(
   }
 
   return Object.freeze({
+    execution,
     appOrigin,
     browserDirOverride,
     dataDirectory,

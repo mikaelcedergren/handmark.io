@@ -36,8 +36,10 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://127.0.0.1:4230`. Development data stays in `.run/dev/`; it must never use production
-port `3000` or production `data/`.
+Open `http://127.0.0.1:4230`. Normal dev uses the existing real `data/handmark.sqlite` and private
+owner credentials. It has a separate listener from production on `3000`, verifies the current
+schema, and never creates or migrates a missing shared store. Automated checks use synthetic data.
+Production owns recurring retention.
 
 Canonical commands:
 

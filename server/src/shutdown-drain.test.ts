@@ -52,6 +52,7 @@ test('shutdown drains an accepted mutation after its JSON body has been fully pa
     stopMaintenance: () => undefined,
   });
   const environment: HandmarkEnvironment = Object.freeze({
+    execution: { executionScope: 'test', dataMode: 'isolated' as const, scheduleOwner: false },
     appOrigin: 'http://handmark.test',
     browserDirOverride: browser,
     dataDirectory: root,

@@ -229,9 +229,11 @@ export function migrateApplicationSchema(
 export function appendApplication(
   database: SyncSqliteDatabase,
   record: ApplicationRecord,
+  beforeAppend: () => void = () => undefined,
 ): number | undefined {
   try {
     return withImmediateTransaction(database, () => {
+      beforeAppend();
       const row = database.get<ApplicationRow>(
         APPLICATION_APPEND_SQL,
         applicationRecordSqlValues(record),

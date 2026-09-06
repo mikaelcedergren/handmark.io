@@ -69,7 +69,8 @@ export async function startHandmarkServer({
     const openedRepository = openApplicationRepository({
       databasePath: environment.databasePath,
       operationalRoot: environment.operationalRoot,
-      requireExisting: environment.isProduction && !environment.releaseValidation,
+      requireExisting: environment.execution.dataMode === 'shared',
+      retentionOwner: environment.execution.scheduleOwner,
     });
     repository = openedRepository;
     repositoryOpen = true;
@@ -85,11 +86,13 @@ export async function startHandmarkServer({
     });
     const httpShutdown = createGracefulShutdown({ server, timeoutMs: 10_000 });
     try {
-      const removed = openedRepository.pruneExpired(Date.now());
+      const removed = environment.execution.scheduleOwner
+        ? openedRepository.pruneExpired(Date.now())
+        : 0;
       if (removed > 0) {
         console.info('[handmark] expired applications removed', { count: removed });
       }
-      openedRepository.startMaintenance();
+      if (environment.execution.scheduleOwner) openedRepository.startMaintenance();
     } catch (error) {
       try {
         await httpShutdown.close('startup_failure');

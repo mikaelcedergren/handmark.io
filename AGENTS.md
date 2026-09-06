@@ -47,15 +47,14 @@ health, static releases, server identity, listener startup, and graceful shutdow
 only its manifest assertion, branded gate presentation, application validation/service, and SQLite
 repository/schema.
 
-There is exactly one runtime and one application store. Do not add a second server, data reader or
-writer, dual write, fallback store, import operator, compatibility layer, or tracked application
-rollback implementation. Applied migrations remain byte-stable because their fingerprints are
+Development and production share one application store, with separate processes and builds. Do not add
+a fallback store, dual write, or tracked application rollback implementation. Applied migrations remain byte-stable because their fingerprints are
 required to open existing SQLite databases; current runtime behavior depends only on the current
 schema.
 
-Production requires the existing `data/handmark.sqlite` and must fail rather than create an empty
-replacement. Development, tests, and isolated release validation use synthetic data outside
-production `data/`.
+Normal development and production require the existing `data/handmark.sqlite` and its current schema.
+Startup verifies; controlled storage upgrades migrate. Tests and release validation use synthetic
+data. Follow the real-data development contract in [SERVER-STANDARD.md](../SERVER-STANDARD.md#local-development).
 
 ## Framework boundary
 
@@ -76,7 +75,7 @@ consumer.
 
 - Never inspect, print, copy into fixtures, or commit production application content.
 - `data/` is operational state and is ignored in full.
-- `.env.web` is the only production private environment file. It may contain only
+- `.env.web` is the only normal runtime private environment file. It may contain only
   `HANDMARK_PASSWORD` and `SESSION_SECRET`, must be one owned mode-`0600` regular file, and is never
   committed.
 - The database uses explicit migrations, foreign keys, WAL, a busy timeout, immutable canonical
@@ -84,7 +83,7 @@ consumer.
   logical ceilings, plus bounded physical/journal storage.
 - Routes write only through `application-service.ts` and `application-repository.ts`.
 - Framework-owned SQLite storage proofs pin the database and sidecars around every operation.
-- Retention starts only after the listener binds so a failed listener cannot mutate data.
+- Only the declared schedule owner runs retention, after its listener binds. Dev does not prune shared records.
 - Runtime data remains covered by the shared backup and bounded-storage contracts. Backups protect
   the current architecture; they are not a reason to retain obsolete source or operators.
 - Never collect raw card details. Add a hosted payment provider before real billing.
@@ -93,7 +92,7 @@ consumer.
 
 `NODE_ENV` accepts only `development`, `test`, or `production`; omission means `development`.
 Isolated release validation uses `NODE_ENV=production` plus the framework validation flag and owns
-fresh unreachable credentials. Ordinary production reads real credentials only through
+fresh unreachable credentials. Normal development and production read real credentials only through
 `server/src/environment-files.ts`.
 
 Local development:
@@ -102,7 +101,8 @@ Local development:
 pnpm dev
 ```
 
-This uses `127.0.0.1:4230` and `.run/dev/data`. Do not casually run `pnpm start` on the Mac mini;
+This uses `127.0.0.1:4230`, real `data/handmark.sqlite`, and `.env.web` credentials.
+Its execution scope is `development`; scheduled retention stays with `production`. Do not casually run `pnpm start` on the Mac mini;
 port `3000` belongs to the selected production service.
 
 ## Application flow
@@ -173,12 +173,13 @@ Tests must use compiled JavaScript, loopback-only processes, explicit synthetic 
 owned OS temporary roots, and synthetic SQLite databases. They must never read production data or
 secrets.
 
-Classify every complete releasable change as browser-only, server-only, or paired. Use the shared
+Deliver ordinary changes through the registered dev service and isolated checks. Publishing requires
+an explicit request. For a requested publication, classify the change as browser-only, server-only, or paired. Use the shared
 registered release operator for that class; never activate half of an uncertain change. Service
 definition installation, service activation, release identity, health, backup, cleanup, and
 public verification follow the root documents. A source build or local preview is not delivery.
 
-Before claiming success, verify the requested route, `/healthz`, the selected browser/server
+For a requested publication, verify the requested route, `/healthz`, the selected browser/server
 identities appropriate to the release class, local nginx routing, and public HTTPS behavior.
 
 ## Git

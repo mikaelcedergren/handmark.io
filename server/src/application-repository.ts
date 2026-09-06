@@ -19,7 +19,6 @@ import {
   deleteApplicationsAtOrBefore,
   HANDMARK_APPLICATION_MIGRATIONS,
   migrateApplicationSchema,
-  verifyApplicationDatabaseBeforeWrite,
   verifyApplicationSchema,
 } from './application-schema.js';
 
@@ -53,6 +52,7 @@ export interface OpenApplicationRepositoryOptions {
   readonly onMaintenanceError?: (error: unknown) => void;
   readonly operationalRoot: string;
   readonly requireExisting?: boolean;
+  readonly retentionOwner?: boolean;
   readonly scheduleTimer?: (callback: () => void, delayMs: number) => MaintenanceTimer;
 }
 
@@ -87,6 +87,7 @@ export function openApplicationRepository({
   onMaintenanceError = (error) => console.error('[handmark] application retention failed', error),
   operationalRoot,
   requireExisting = false,
+  retentionOwner = false,
   scheduleTimer = (callback, delayMs) => setTimeout(callback, delayMs),
 }: OpenApplicationRepositoryOptions): ApplicationRepository {
   if (
@@ -109,7 +110,7 @@ export function openApplicationRepository({
   owned = requireExisting
     ? openOwnedSqliteDatabase({
         ...storageOptions,
-        beforeWrite: verifyApplicationDatabaseBeforeWrite,
+        beforeWrite: verifyApplicationSchema,
         requireExisting: true,
       })
     : openOwnedSqliteDatabase(storageOptions);
@@ -118,7 +119,7 @@ export function openApplicationRepository({
   let maintenanceStarted = false;
   let maintenanceTimer: MaintenanceTimer | undefined;
   try {
-    migrateApplicationSchema(database);
+    if (!requireExisting) migrateApplicationSchema(database);
     configureDatabaseStorage(database);
     owned.verifyStorage();
     verifyApplicationSchema(database);
@@ -144,10 +145,11 @@ export function openApplicationRepository({
       assertEpochMilliseconds(acceptedAt, 'Application acceptance time');
       try {
         owned.verifyStorage();
-        const cutoff = retentionCutoff(acceptedAt);
-        if (cutoff !== undefined) deleteApplicationsAtOrBefore(database, cutoff);
-        enforceLogicalCapacity(database, canonicalApplicationRecordBytes(record).byteLength + 1);
-        const sequence = appendApplication(database, record);
+        const sequence = appendApplication(database, record, () => {
+          const cutoff = retentionOwner ? retentionCutoff(acceptedAt) : undefined;
+          if (cutoff !== undefined) deleteApplicationsAtOrBefore(database, cutoff);
+          enforceLogicalCapacity(database, canonicalApplicationRecordBytes(record).byteLength + 1);
+        });
         owned.verifyStorage();
         scheduleMaintenanceIfStarted();
         return sequence;
@@ -211,6 +213,7 @@ export function openApplicationRepository({
     },
     pruneExpired(now: number) {
       requireOpen();
+      if (!retentionOwner) return 0;
       assertEpochMilliseconds(now, 'Application retention time');
       try {
         owned.verifyStorage();
@@ -225,7 +228,7 @@ export function openApplicationRepository({
     },
     startMaintenance() {
       requireOpen();
-      if (maintenanceStarted) return;
+      if (!retentionOwner || maintenanceStarted) return;
       maintenanceStarted = true;
       scheduleMaintenanceIfStarted();
     },

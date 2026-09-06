@@ -7,6 +7,9 @@ import test from 'node:test';
 import { loadHandmarkEnvironment } from './environment.js';
 
 const secrets = Object.freeze({
+  CX_EXECUTION_SCOPE: 'development',
+  CX_DATA_MODE: 'shared',
+  CX_SCHEDULE_OWNER: 'false',
   HANDMARK_PASSWORD: 'handmark-test-password',
   SESSION_SECRET: 'handmark-test-session-secret-000000000',
 });
@@ -16,6 +19,9 @@ test('ordinary production accepts mutations from both exact live Handmark origin
     ...secrets,
     APP_BASE_URL: 'https://handmark.io',
     NODE_ENV: 'production',
+    CX_EXECUTION_SCOPE: 'production',
+    CX_DATA_MODE: 'shared',
+    CX_SCHEDULE_OWNER: 'true',
     PORT: '3000',
   });
   assert.equal(environment.appOrigin, 'https://handmark.io');
@@ -32,6 +38,9 @@ test('release validation accepts only its exact isolated loopback origin', (t) =
   const suppliedSessionSecret = 'release-validation-session-secret-must-be-ignored';
   const environment = loadHandmarkEnvironment({
     APP_BASE_URL: 'http://127.0.0.1',
+    CX_EXECUTION_SCOPE: 'validation',
+    CX_DATA_MODE: 'isolated',
+    CX_SCHEDULE_OWNER: 'false',
     CX_RELEASE_VALIDATION: '1',
     CX_RUNTIME_ROOT: runtimeRoot,
     HANDMARK_PASSWORD: suppliedGatePassword,
@@ -41,6 +50,9 @@ test('release validation accepts only its exact isolated loopback origin', (t) =
   });
   const secondEnvironment = loadHandmarkEnvironment({
     APP_BASE_URL: 'http://127.0.0.1',
+    CX_EXECUTION_SCOPE: 'validation',
+    CX_DATA_MODE: 'isolated',
+    CX_SCHEDULE_OWNER: 'false',
     CX_RELEASE_VALIDATION: '1',
     CX_RUNTIME_ROOT: runtimeRoot,
     NODE_ENV: 'production',
@@ -58,10 +70,10 @@ test('release validation accepts only its exact isolated loopback origin', (t) =
   assert.notEqual(environment.sessionSecret, secondEnvironment.sessionSecret);
 });
 
-test('ordinary development defaults all mutable data to the isolated run directory', () => {
+test('ordinary development uses the authoritative records with schedules disabled', () => {
   const environment = loadHandmarkEnvironment({ ...secrets, NODE_ENV: 'development' });
-  assert.equal(environment.dataDirectory, path.resolve('.run/dev/data'));
-  assert.equal(environment.databasePath, path.resolve('.run/dev/data/handmark.sqlite'));
+  assert.equal(environment.dataDirectory, path.resolve('data'));
+  assert.equal(environment.databasePath, path.resolve('data/handmark.sqlite'));
 });
 
 test('environment mode is an exact closed set', () => {
@@ -78,10 +90,30 @@ test('environment mode is an exact closed set', () => {
       loadHandmarkEnvironment({
         ...secrets,
         APP_BASE_URL: 'http://127.0.0.1',
+        CX_EXECUTION_SCOPE: 'validation',
+        CX_DATA_MODE: 'isolated',
+        CX_SCHEDULE_OWNER: 'false',
         CX_RELEASE_VALIDATION: '1',
         CX_RUNTIME_ROOT: '/private/tmp/handmark-invalid-release-mode',
         NODE_ENV: 'test',
       }),
     /CX_RELEASE_VALIDATION=1 requires NODE_ENV=production/,
+  );
+});
+
+test('shared development requires real credentials and refuses alternate stores', () => {
+  const policy = {
+    CX_EXECUTION_SCOPE: 'development',
+    CX_DATA_MODE: 'shared',
+    CX_SCHEDULE_OWNER: 'false',
+  };
+  assert.throws(() => loadHandmarkEnvironment(policy), /HANDMARK_PASSWORD/);
+  assert.throws(
+    () => loadHandmarkEnvironment({ ...secrets, DATA_DIR: '.run/dev/data' }),
+    /Shared Handmark data/,
+  );
+  assert.throws(
+    () => loadHandmarkEnvironment({ ...secrets, CX_SCHEDULE_OWNER: 'true' }),
+    /recurring schedules/,
   );
 });

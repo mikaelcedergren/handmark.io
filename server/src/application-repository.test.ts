@@ -57,6 +57,7 @@ test('repository creates only real contained directories and rejects linked stor
 
   const nestedDatabase = path.join(operationalRoot, 'data', 'nested', 'handmark.sqlite');
   const repository = openApplicationRepository({
+    retentionOwner: true,
     databasePath: nestedDatabase,
     operationalRoot,
   });
@@ -67,7 +68,11 @@ test('repository creates only real contained directories and rejects linked stor
   fs.symlinkSync(outside, linkedParent);
   const escapedDatabase = path.join(linkedParent, 'escaped.sqlite');
   assert.throws(() =>
-    openApplicationRepository({ databasePath: escapedDatabase, operationalRoot }),
+    openApplicationRepository({
+      retentionOwner: true,
+      databasePath: escapedDatabase,
+      operationalRoot,
+    }),
   );
   assert.equal(fs.existsSync(path.join(outside, 'escaped.sqlite')), false);
 
@@ -75,21 +80,35 @@ test('repository creates only real contained directories and rejects linked stor
   const linkTarget = path.join(outside, 'target.sqlite');
   fs.writeFileSync(linkTarget, 'not a database');
   fs.symlinkSync(linkTarget, linkedDatabase);
-  assert.throws(() => openApplicationRepository({ databasePath: linkedDatabase, operationalRoot }));
+  assert.throws(() =>
+    openApplicationRepository({
+      retentionOwner: true,
+      databasePath: linkedDatabase,
+      operationalRoot,
+    }),
+  );
 
   const hardlinkedDatabase = path.join(operationalRoot, 'hardlinked.sqlite');
   const secondLink = path.join(operationalRoot, 'hardlinked-copy.sqlite');
   fs.writeFileSync(hardlinkedDatabase, 'not a database');
   fs.linkSync(hardlinkedDatabase, secondLink);
   assert.throws(() =>
-    openApplicationRepository({ databasePath: hardlinkedDatabase, operationalRoot }),
+    openApplicationRepository({
+      retentionOwner: true,
+      databasePath: hardlinkedDatabase,
+      operationalRoot,
+    }),
   );
 });
 
 test('health fails closed when the essential application schema disappears after startup', (t) => {
   const operationalRoot = fixtureRoot(t);
   const databasePath = path.join(operationalRoot, 'data', 'handmark.sqlite');
-  const repository = openApplicationRepository({ databasePath, operationalRoot });
+  const repository = openApplicationRepository({
+    retentionOwner: true,
+    databasePath,
+    operationalRoot,
+  });
   t.after(() => repository.close());
   assert.equal(repository.isReady(), true);
 
@@ -104,15 +123,25 @@ test('required storage fails closed without creating a replacement database', (t
   const databasePath = path.join(operationalRoot, 'data', 'handmark.sqlite');
 
   assert.throws(() =>
-    openApplicationRepository({ databasePath, operationalRoot, requireExisting: true }),
+    openApplicationRepository({
+      retentionOwner: true,
+      databasePath,
+      operationalRoot,
+      requireExisting: true,
+    }),
   );
   assert.equal(fs.existsSync(databasePath), false);
   assert.equal(fs.existsSync(path.dirname(databasePath)), false);
 
-  const created = openApplicationRepository({ databasePath, operationalRoot });
+  const created = openApplicationRepository({
+    retentionOwner: true,
+    databasePath,
+    operationalRoot,
+  });
   created.close();
   const before = storageDirectorySnapshot(path.dirname(databasePath));
   const reopened = openApplicationRepository({
+    retentionOwner: true,
     databasePath,
     operationalRoot,
     requireExisting: true,
@@ -128,7 +157,11 @@ test('an open repository fails closed if its selected database path is replaced'
   const databasePath = path.join(dataDirectory, 'handmark.sqlite');
   const replacementPath = path.join(dataDirectory, 'replacement.sqlite');
   const displacedPath = path.join(dataDirectory, 'handmark-original.sqlite');
-  const repository = openApplicationRepository({ databasePath, operationalRoot });
+  const repository = openApplicationRepository({
+    retentionOwner: true,
+    databasePath,
+    operationalRoot,
+  });
   createCurrentDatabase(operationalRoot, replacementPath);
   fs.renameSync(databasePath, displacedPath);
   fs.renameSync(replacementPath, databasePath);
@@ -163,6 +196,7 @@ test('repository accepts pinned existing WAL recovery files without replacing th
   const sharedMemoryIdentity = fs.statSync(sharedMemoryPath, { bigint: true });
 
   const repository = openApplicationRepository({
+    retentionOwner: true,
     databasePath,
     operationalRoot,
     requireExisting: true,
@@ -209,6 +243,7 @@ test('idle maintenance expires records at 90 days and stops cleanly', (t) => {
     },
   };
   const repository = openApplicationRepository({
+    retentionOwner: true,
     databasePath,
     operationalRoot,
     ...timerOptions,
@@ -245,6 +280,7 @@ test('maintenance remains retryable when its error reporter throws', (t) => {
   let reports = 0;
   let schedules = 0;
   const repository = openApplicationRepository({
+    retentionOwner: true,
     cancelTimer: () => undefined,
     clock: () => now,
     databasePath,
@@ -280,6 +316,7 @@ test('close releases SQLite and every path proof even when timer cancellation fa
   const acceptedAt = Date.parse('2026-01-01T00:00:00.000Z');
   let cancellationCalls = 0;
   const repository = openApplicationRepository({
+    retentionOwner: true,
     cancelTimer() {
       cancellationCalls += 1;
       throw new Error('timer cancellation failed');
@@ -319,7 +356,11 @@ function applicationCount(databasePath: string): number {
 }
 
 function createCurrentDatabase(operationalRoot: string, databasePath: string): void {
-  const repository = openApplicationRepository({ databasePath, operationalRoot });
+  const repository = openApplicationRepository({
+    retentionOwner: true,
+    databasePath,
+    operationalRoot,
+  });
   repository.close();
 }
 
@@ -343,3 +384,40 @@ function storageDirectorySnapshot(directory: string) {
       });
     });
 }
+
+test('a development connection neither prunes nor starts retention for shared records', (t) => {
+  const operationalRoot = fixtureRoot(t);
+  const databasePath = path.join(operationalRoot, 'data', 'handmark.sqlite');
+  const owner = openApplicationRepository({ databasePath, operationalRoot, retentionOwner: true });
+  const createdAt = 1_000;
+  owner.append(application('HM-AAAA0001', createdAt), createdAt);
+  let timers = 0;
+  const development = openApplicationRepository({
+    databasePath,
+    operationalRoot,
+    requireExisting: true,
+    retentionOwner: false,
+    scheduleTimer: () => {
+      timers += 1;
+      return { unref() {} };
+    },
+  });
+  t.after(() => {
+    development.close();
+    owner.close();
+  });
+  development.startMaintenance();
+  assert.equal(timers, 0);
+  assert.equal(development.pruneExpired(createdAt + APPLICATION_RETENTION_MS + 1), 0);
+  development.append(
+    application('HM-AAAA0002', createdAt + APPLICATION_RETENTION_MS + 1),
+    createdAt + APPLICATION_RETENTION_MS + 1,
+  );
+  const reader = new DatabaseSync(databasePath, { readOnly: true });
+  try {
+    assert.equal(reader.prepare('SELECT COUNT(*) AS count FROM applications').get()?.count, 2);
+  } finally {
+    reader.close();
+  }
+  assert.equal(owner.pruneExpired(createdAt + APPLICATION_RETENTION_MS + 1), 1);
+});
