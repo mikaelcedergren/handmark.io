@@ -24,6 +24,7 @@ import {
   type HandmarkEnvironment,
 } from './environment.js';
 import { assertHandmarkProductManifest } from './product-contract.js';
+import { configureHandmarkLogging, handmarkLog } from './logging.js';
 
 export interface HandmarkRuntime {
   readonly environment: HandmarkEnvironment;
@@ -48,6 +49,7 @@ export async function startHandmarkServer({
     environment: sourceEnvironment,
     required: environment.isProduction || environment.releaseValidation,
   });
+  configureHandmarkLogging(sourceEnvironment, identity?.releaseId);
   if (identity) {
     assertServerProcessRole({
       artifactRoot: HANDMARK_ARTIFACT_ROOT,
@@ -86,12 +88,7 @@ export async function startHandmarkServer({
     });
     const httpShutdown = createGracefulShutdown({ server, timeoutMs: 10_000 });
     try {
-      const removed = environment.execution.scheduleOwner
-        ? openedRepository.pruneExpired(Date.now())
-        : 0;
-      if (removed > 0) {
-        console.info('[handmark] expired applications removed', { count: removed });
-      }
+      if (environment.execution.scheduleOwner) openedRepository.pruneExpired(Date.now());
       if (environment.execution.scheduleOwner) openedRepository.startMaintenance();
     } catch (error) {
       try {
@@ -104,7 +101,12 @@ export async function startHandmarkServer({
       }
       throw error;
     }
-    console.info(`[handmark] listening on http://${environment.host}:${String(environment.port)}`);
+    handmarkLog.emit({
+      event: 'process.ready',
+      level: 'info',
+      category: 'operation',
+      outcome: 'success',
+    });
     let closing: Promise<void> | undefined;
     let disposeSignals = (): void => undefined;
     const shutdown: GracefulShutdown = {
@@ -113,22 +115,37 @@ export async function startHandmarkServer({
       },
       close(reason = 'shutdown') {
         if (closing) return closing;
-        console.info(`[handmark] shutting down (${reason})`);
         openedRepository.stopMaintenance();
-        closing = httpShutdown.close(reason).finally(() => {
-          disposeSignals();
-          if (repositoryOpen) {
-            repositoryOpen = false;
-            openedRepository.close();
-          }
-        });
+        closing = httpShutdown
+          .close(reason)
+          .finally(() => {
+            disposeSignals();
+            if (repositoryOpen) {
+              repositoryOpen = false;
+              openedRepository.close();
+            }
+          })
+          .then(() => {
+            handmarkLog.emit({
+              event: 'process.stopped',
+              level: 'info',
+              category: 'operation',
+              outcome: 'success',
+            });
+          });
         return closing;
       },
     };
     try {
       disposeSignals = bindShutdownSignals({
         onError(error) {
-          console.error('[handmark] shutdown failed', error);
+          handmarkLog.emit({
+            event: 'process.stop_failed',
+            level: 'error',
+            category: 'diagnostic',
+            outcome: 'failure',
+            error,
+          });
           process.exitCode = 1;
         },
         shutdown,

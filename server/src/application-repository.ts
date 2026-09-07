@@ -5,6 +5,8 @@ import {
   type SqliteRow,
   type SyncSqliteDatabase,
 } from '@mikaelcedergren/cx-framework/server/sqlite';
+import { runWithLogContext } from '@mikaelcedergren/cx-framework/server/logging';
+import { randomUUID } from 'node:crypto';
 
 import {
   APPLICATION_DATABASE_JOURNAL_MAX_BYTES,
@@ -14,6 +16,7 @@ import {
   APPLICATION_RETENTION_MS,
 } from './constants.js';
 import { canonicalApplicationRecordBytes, type ApplicationRecord } from './application-record.js';
+import { handmarkLog } from './logging.js';
 import {
   appendApplication,
   deleteApplicationsAtOrBefore,
@@ -84,7 +87,15 @@ export function openApplicationRepository({
   clock = Date.now,
   databasePath,
   onOpenCheckpoint = () => undefined,
-  onMaintenanceError = (error) => console.error('[handmark] application retention failed', error),
+  onMaintenanceError = (error) => {
+    handmarkLog.emit({
+      event: 'retention.failed',
+      level: 'error',
+      category: 'diagnostic',
+      outcome: 'failure',
+      error,
+    });
+  },
   operationalRoot,
   requireExisting = false,
   retentionOwner = false,
@@ -118,6 +129,7 @@ export function openApplicationRepository({
   let closed = false;
   let maintenanceStarted = false;
   let maintenanceTimer: MaintenanceTimer | undefined;
+  let healthFailed = false;
   try {
     if (!requireExisting) migrateApplicationSchema(database);
     configureDatabaseStorage(database);
@@ -206,8 +218,34 @@ export function openApplicationRepository({
             (HANDMARK_APPLICATION_MIGRATIONS.at(-1)?.version ?? 0) &&
           safeInteger(row?.application_count) !== undefined;
         owned.verifyStorage();
+        if (!ready && !healthFailed) {
+          handmarkLog.emit({
+            event: 'storage.health_failed',
+            level: 'error',
+            category: 'diagnostic',
+            outcome: 'failure',
+            code: 'STORAGE_NOT_READY',
+          });
+        } else if (ready && healthFailed) {
+          handmarkLog.emit({
+            event: 'storage.health_recovered',
+            level: 'info',
+            category: 'operation',
+            outcome: 'success',
+          });
+        }
+        healthFailed = !ready;
         return ready;
-      } catch {
+      } catch (error) {
+        if (!healthFailed)
+          handmarkLog.emit({
+            event: 'storage.health_failed',
+            level: 'error',
+            category: 'diagnostic',
+            outcome: 'failure',
+            error,
+          });
+        healthFailed = true;
         return false;
       }
     },
@@ -220,6 +258,7 @@ export function openApplicationRepository({
         const cutoff = retentionCutoff(now);
         const removed = cutoff === undefined ? 0 : deleteApplicationsAtOrBefore(database, cutoff);
         owned.verifyStorage();
+        logRetention(removed);
         scheduleMaintenanceIfStarted();
         return removed;
       } catch (error) {
@@ -265,13 +304,18 @@ export function openApplicationRepository({
   }
 
   function runMaintenance(): void {
+    runWithLogContext({ runId: randomUUID() }, executeMaintenance);
+  }
+
+  function executeMaintenance(): void {
     maintenanceTimer = undefined;
     if (!maintenanceStarted || closed) return;
     try {
       owned.verifyStorage();
       const cutoff = retentionCutoff(maintenanceClock());
-      if (cutoff !== undefined) deleteApplicationsAtOrBefore(database, cutoff);
+      const removed = cutoff === undefined ? 0 : deleteApplicationsAtOrBefore(database, cutoff);
       owned.verifyStorage();
+      logRetention(removed);
       scheduleMaintenance();
     } catch (error) {
       try {
@@ -311,6 +355,17 @@ export function openApplicationRepository({
     }
     return timestamp;
   }
+}
+
+function logRetention(count: number): void {
+  if (count > 0)
+    handmarkLog.emit({
+      event: 'retention.completed',
+      level: 'info',
+      category: 'operation',
+      outcome: 'success',
+      count,
+    });
 }
 
 function configureDatabaseStorage(database: SyncSqliteDatabase): void {

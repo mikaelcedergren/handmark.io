@@ -24,6 +24,7 @@ import {
   type ServerReleaseIdentity,
 } from '@mikaelcedergren/cx-framework/server/server-identity';
 import type { BrowserServing } from '@mikaelcedergren/cx-framework/server/static-files';
+import type { RuntimeLogger } from '@mikaelcedergren/cx-framework/server/logging';
 import express, { type NextFunction, type Request, type Response } from 'express';
 
 import type { ApplicationRepository } from './application-repository.js';
@@ -42,13 +43,14 @@ import {
 import { mountHandmarkBrowser } from './browser-serving.js';
 import type { HandmarkEnvironment } from './environment.js';
 import { HANDMARK_GATE_PRESENTATION } from './gate-presentation.js';
+import { handmarkLog } from './logging.js';
 
 export interface HandmarkApplicationOptions {
   readonly applicationService?: ApplicationService;
   readonly browserServing: BrowserServing;
   readonly environment: HandmarkEnvironment;
   readonly identity?: ServerReleaseIdentity;
-  readonly onInternalError?: (error: unknown, request: unknown) => void;
+  readonly logger?: Pick<RuntimeLogger, 'emit'>;
   readonly repository: ApplicationRepository;
   readonly serviceOptions?: Omit<ApplicationServiceOptions, 'repository'>;
 }
@@ -58,14 +60,16 @@ export function createHandmarkApplication({
   browserServing,
   environment,
   identity,
-  onInternalError = defaultInternalErrorLogger,
+  logger = handmarkLog,
   repository,
   serviceOptions = {},
 }: HandmarkApplicationOptions): express.Express {
   const app = express();
   hardenApplication(app);
   app.use(securityHeaders());
-  app.use(requestIdMiddleware());
+  app.use(
+    requestIdMiddleware(environment.isProduction ? { trustedProxyAddress: '127.0.0.1' } : {}),
+  );
   app.use(compression());
 
   app.get(
@@ -112,7 +116,8 @@ export function createHandmarkApplication({
     maxKeys: 10_000,
     windowMs: 60 * 60 * 1_000,
   });
-  const service = applicationService ?? createApplicationService({ repository, ...serviceOptions });
+  const service =
+    applicationService ?? createApplicationService({ repository, logger, ...serviceOptions });
   app.post(
     '/api/apply',
     express.json({ limit: '64kb' }),
@@ -136,23 +141,6 @@ export function createHandmarkApplication({
   app.use((request, _response, next) => {
     next(notFoundError(request.originalUrl));
   });
-  app.use(jsonErrorMiddleware({ onInternalError }));
+  app.use(jsonErrorMiddleware({ logger }));
   return app;
-}
-
-function defaultInternalErrorLogger(error: unknown, request: unknown): void {
-  const context =
-    request && typeof request === 'object'
-      ? (request as {
-          readonly method?: unknown;
-          readonly path?: unknown;
-          readonly requestId?: unknown;
-        })
-      : {};
-  console.error('[handmark] unhandled request error', {
-    error,
-    method: typeof context.method === 'string' ? context.method : undefined,
-    path: typeof context.path === 'string' ? context.path : undefined,
-    requestId: typeof context.requestId === 'string' ? context.requestId : undefined,
-  });
 }

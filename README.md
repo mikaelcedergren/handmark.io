@@ -29,6 +29,14 @@ Handmark follows the shared family architecture in
 Applied migrations are immutable database history. The current schema, code, operator, service,
 documentation, and backup policy have one SQLite authority and no alternate application store.
 
+Operational diagnostics use the published structured logger under the shared
+[logging contract](../WEB-ARCHITECTURE.md#structured-operational-logging) and
+[retention policy](../SERVER-STANDARD.md#logs-and-bounded-storage). An accepted submission records
+only its opaque application ID and request ID after the SQLite append succeeds. HTTP failures
+retain one sanitized cause; forms, contact details, credentials, URLs and database contents stay
+out of logs. Storage health records failure/recovery transitions, and scheduled retention gets
+its own run ID. Host capture activation is separate from this source implementation.
+
 ## Local development
 
 ```bash

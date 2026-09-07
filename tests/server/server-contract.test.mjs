@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { parseLogRecord } from '@mikaelcedergren/cx-framework/server/logging';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
@@ -113,7 +114,51 @@ test('compiled server preserves auth, intake, SQLite, restart, and shutdown cont
     const accepted = await submitted.json();
     assert.match(accepted.id, /^HM-[0-9A-F]{8}$/);
 
+    const failureDatabase = new DatabaseSync(fixture.databasePath);
+    try {
+      failureDatabase.exec(
+        "CREATE TRIGGER synthetic_intake_failure BEFORE INSERT ON applications BEGIN SELECT RAISE(ABORT, 'PRIVATE-STORAGE-DETAIL'); END",
+      );
+    } finally {
+      failureDatabase.close();
+    }
+    const storageFailure = await localFetch(`${server.baseUrl}/api/apply?private=PRIVATE-QUERY`, {
+      body: JSON.stringify(validApplication),
+      headers: {
+        'content-type': 'application/json',
+        cookie,
+        origin: server.baseUrl,
+        'x-request-id': 'untrusted-client-id',
+      },
+      method: 'POST',
+    });
+    assert.equal(storageFailure.status, 503);
+    const failureId = storageFailure.headers.get('x-request-id');
+    assert.notEqual(failureId, 'untrusted-client-id');
+    assert.equal((await storageFailure.json()).error.requestId, failureId);
+    const restoredDatabase = new DatabaseSync(fixture.databasePath);
+    try {
+      restoredDatabase.exec('DROP TRIGGER synthetic_intake_failure');
+    } finally {
+      restoredDatabase.close();
+    }
     await stopServer(server);
+    const records = server.output().trim().split('\n').map(parseLogRecord);
+    const acceptedEvents = records.filter((record) => record.event === 'application.accepted');
+    assert.equal(acceptedEvents.length, 1);
+    assert.equal(acceptedEvents[0].effectId, accepted.id);
+    assert.equal(acceptedEvents[0].requestId, submitted.headers.get('x-request-id'));
+    assert.equal(acceptedEvents[0].outcome, 'success');
+    const failures = records.filter((record) => record.requestId === failureId && record.error);
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].event, 'http.internal_error');
+    assert.equal(failures[0].code, 'application_storage_error');
+    assert.ok(failures[0].error.causes.length > 0);
+    assert.ok(records.every((record) => record.service === 'handmark'));
+    assert.doesNotMatch(
+      server.output(),
+      /PRIVATE|untrusted-client-id|contract@example|Contract maker|Contract studio|A human-made|example.com|handmark-contract-password|handmark-contract-session-secret/,
+    );
     server = undefined;
     assertStoredApplication(fixture.databasePath, accepted.id);
 
@@ -145,7 +190,15 @@ test('ordinary production refuses a missing database and never creates a replace
     const code = await waitForExit(server, 8_000);
     assert.notEqual(code, 0, server.output());
     assert.equal(existsSync(fixture.databasePath), false);
-    assert.doesNotMatch(server.output(), /\[handmark\] listening/);
+    assert.doesNotMatch(server.output(), /"event":"process.ready"/);
+    const failures = server.output().trim().split('\n').map(parseLogRecord);
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].event, 'process.start_failed');
+    assert.ok(failures[0].error);
+    assert.doesNotMatch(
+      server.output(),
+      /handmark-contract-password|handmark-contract-session-secret|\/private\//,
+    );
   } finally {
     if (server?.child.exitCode === null) {
       server.child.kill('SIGKILL');
@@ -301,7 +354,7 @@ async function waitForHealth(server) {
 async function stopServer(server) {
   if (server.child.exitCode === null) server.child.kill('SIGTERM');
   assert.equal(await waitForExit(server), 0, server.output());
-  assert.match(server.output(), /shutting down \(SIGTERM\)/);
+  assert.match(server.output(), /"event":"process.stopped"/);
 }
 
 async function waitForExit(server, timeoutMs = 12_000) {

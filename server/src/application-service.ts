@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import { HttpError } from '@mikaelcedergren/cx-framework/server/errors';
+import type { RuntimeLogger } from '@mikaelcedergren/cx-framework/server/logging';
 
 import {
   ApplicationStorageCapacityError,
@@ -10,6 +11,7 @@ import {
 import type { ApplicationRecord } from './application-record.js';
 import { validateApplicationSubmission } from './application-validation.js';
 import { APPLICATION_STORAGE_FULL_MESSAGE, APPLICATION_SUCCESS_MESSAGE } from './constants.js';
+import { handmarkLog } from './logging.js';
 
 const APPLICATION_ID_ATTEMPTS = 32;
 
@@ -23,6 +25,7 @@ export interface ApplicationServiceOptions {
   readonly clock?: () => number;
   readonly generateId?: () => string;
   readonly repository: Pick<ApplicationRepository, 'append'>;
+  readonly logger?: Pick<RuntimeLogger, 'emit'>;
 }
 
 export interface ApplicationService {
@@ -33,6 +36,7 @@ export function createApplicationService({
   clock = Date.now,
   generateId = defaultApplicationId,
   repository,
+  logger = handmarkLog,
 }: ApplicationServiceOptions): ApplicationService {
   if (!repository || typeof repository.append !== 'function') {
     throw new Error('Application service requires a repository.');
@@ -68,6 +72,18 @@ export function createApplicationService({
           });
           const sequence = await repository.append(record, acceptedAt);
           if (sequence !== undefined) {
+            try {
+              logger.emit({
+                event: 'application.accepted',
+                level: 'info',
+                category: 'operation',
+                outcome: 'success',
+                operation: 'application.submit',
+                effectId: id,
+              });
+            } catch {
+              // An injected diagnostic sink must not turn a committed submission into a false failure.
+            }
             return Object.freeze({ id, message: APPLICATION_SUCCESS_MESSAGE, ok: true });
           }
         }
