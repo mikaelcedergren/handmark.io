@@ -49,6 +49,10 @@ owner credentials. It has a separate listener from production on `3000`, verifie
 schema, and never creates or migrates a missing shared store. Automated checks use synthetic data.
 Production owns recurring retention.
 
+On the personal Mac, `cx handmark.io` selects `pnpm dev:owner` on the same port. It creates its own
+`data/owner-development/handmark.sqlite` and uses the local gate password
+`handmark-local-development`, without reading private environment files.
+
 Canonical commands:
 
 ```bash

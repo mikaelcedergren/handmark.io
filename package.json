@@ -10,8 +10,10 @@
   },
   "scripts": {
     "dev": "pnpm favicon:check && pnpm run build:dev && concurrently -k -n browser,server -c blue,green \"pnpm run dev:browser\" \"pnpm run dev:server\"",
+    "dev:owner": "pnpm favicon:check && pnpm run build:dev && concurrently -k -n browser,server -c blue,green \"pnpm run dev:browser\" \"pnpm run dev:server:owner\"",
     "dev:browser": "ng build --configuration local --watch --output-path .run/dev/browser-output",
     "dev:server": "env CX_EXECUTION_SCOPE=development CX_DATA_MODE=shared CX_SCHEDULE_OWNER=false APP_BASE_URL=http://127.0.0.1:4230 DATA_DIR=data DB_PATH=data/handmark.sqlite HOST=127.0.0.1 NODE_ENV=development PORT=4230 SITE_BROWSER_DIR=\"$PWD/.run/dev/browser-output/browser\" server/node_modules/.bin/tsx watch server/src/index.ts",
+    "dev:server:owner": "env -u HANDMARK_PASSWORD -u SESSION_SECRET HANDMARK_LOAD_ENV_FILE=false CX_EXECUTION_SCOPE=development CX_DATA_MODE=isolated CX_SCHEDULE_OWNER=false APP_BASE_URL=http://127.0.0.1:4230 DATA_DIR=data/owner-development DB_PATH=data/owner-development/handmark.sqlite HANDMARK_PASSWORD=handmark-local-development SESSION_SECRET=handmark-local-development-session-secret HOST=127.0.0.1 NODE_ENV=development PORT=4230 SITE_BROWSER_DIR=\"$PWD/.run/dev/browser-output/browser\" server/node_modules/.bin/tsx watch server/src/index.ts",
     "build": "pnpm run build:browser && pnpm run build:server",
     "build:browser": "ng build --configuration prod",
     "build:server": "pnpm --filter handmark-server run build",
