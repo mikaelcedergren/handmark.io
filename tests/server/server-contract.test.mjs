@@ -76,7 +76,10 @@ test('compiled server preserves auth, intake, SQLite, restart, and shutdown cont
 
     const gate = await localFetch(`${server.baseUrl}/login`);
     assert.equal(gate.status, 200);
-    assert.match(await gate.text(), /Human-made work, verified\./);
+    const gateHtml = await gate.text();
+    assert.match(gateHtml, /Human-made work, verified\./);
+    assert.match(gateHtml, /href="\/assets\/handmark-symbol\.svg\?v=/);
+    assert.doesNotMatch(gateHtml, /favicon-development/);
 
     const failed = await unlock(server.baseUrl, 'incorrect-password');
     assert.equal(failed.status, 302);
@@ -180,6 +183,26 @@ test('compiled server preserves auth, intake, SQLite, restart, and shutdown cont
   }
 });
 
+test('development gate uses its badged favicon and serves only that additional public asset', async () => {
+  const fixture = createFixture();
+  let server;
+  try {
+    server = spawnServerProcess(fixture, await reservePort(), { executionScope: 'development' });
+    await waitForHealth(server);
+    const gate = await localFetch(`${server.baseUrl}/login`);
+    assert.match(await gate.text(), /href="\/assets\/favicon-development\.svg"/);
+    const favicon = await localFetch(`${server.baseUrl}/assets/favicon-development.svg`);
+    assert.equal(favicon.status, 200);
+    assert.match(await favicon.text(), /<svg/);
+    const protectedPage = await localFetch(`${server.baseUrl}/`, { redirect: 'manual' });
+    assert.equal(protectedPage.status, 302);
+    assert.equal(protectedPage.headers.get('location'), '/login');
+  } finally {
+    if (server) await stopServer(server);
+    removeFixture(fixture);
+  }
+});
+
 test('ordinary production refuses a missing database and never creates a replacement', async () => {
   const fixture = createFixture();
   let server;
@@ -269,6 +292,7 @@ function writeBrowserFixture(browserDir) {
     ['main-ABCDEF12.js', 'globalThis.handmarkFixture = true;'],
     ['assets/handmark-logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"></svg>'],
     ['assets/handmark-symbol.svg', '<svg xmlns="http://www.w3.org/2000/svg"></svg>'],
+    ['assets/favicon-development.svg', '<svg xmlns="http://www.w3.org/2000/svg"></svg>'],
     ['assets/handmark-stamp.svg', '<svg xmlns="http://www.w3.org/2000/svg"></svg>'],
   ]);
   for (const [relativePath, contents] of files) {
@@ -283,7 +307,11 @@ async function startServer(fixture) {
   return server;
 }
 
-function spawnServerProcess(fixture, port, { identityFile, production = false } = {}) {
+function spawnServerProcess(
+  fixture,
+  port,
+  { identityFile, production = false, executionScope = 'test' } = {},
+) {
   const baseUrl = `http://127.0.0.1:${String(port)}`;
   let output = '';
   const child = spawn(process.execPath, ['--import', externalFetchGuard, compiledEntrypoint], {
@@ -303,7 +331,7 @@ function spawnServerProcess(fixture, port, { identityFile, production = false } 
       DB_PATH: 'data/handmark.sqlite',
       HOST: '127.0.0.1',
       NODE_ENV: production ? 'production' : 'test',
-      CX_EXECUTION_SCOPE: production ? 'production' : 'test',
+      CX_EXECUTION_SCOPE: production ? 'production' : executionScope,
       CX_DATA_MODE: production ? 'shared' : 'isolated',
       CX_SCHEDULE_OWNER: 'false',
       PATH: process.env.PATH ?? '/usr/bin:/bin',

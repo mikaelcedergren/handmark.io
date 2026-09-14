@@ -3,18 +3,21 @@ import {
   createSiteGatePresentation,
 } from '@mikaelcedergren/cx-framework/server/gate';
 
-export const HANDMARK_GATE_PRESENTATION = createSiteGatePresentation({
-  form: {
-    errorClassName: 'login-error cx-text-body-sm',
-    errorMessage: 'Incorrect password. Try again.',
-    formClassName: 'login-form',
-    inputClassName: 'login-input',
-    labelClassName: 'login-label',
-    passwordLabel: 'Access password',
-    submitClassName: 'login-submit',
-    submitLabel: 'Enter Handmark',
-  },
-  template: `<!doctype html>
+import { HANDMARK_DEVELOPMENT_FAVICON } from './constants.js';
+
+export function createHandmarkGatePresentation(development: boolean) {
+  return createSiteGatePresentation({
+    form: {
+      errorClassName: 'login-error cx-text-body-sm',
+      errorMessage: 'Incorrect password. Try again.',
+      formClassName: 'login-form',
+      inputClassName: 'login-input',
+      labelClassName: 'login-label',
+      passwordLabel: 'Access password',
+      submitClassName: 'login-submit',
+      submitLabel: 'Enter Handmark',
+    },
+    template: `<!doctype html>
 <html lang="en" class="theme-night">
   <head>
     <meta charset="utf-8">
@@ -23,7 +26,7 @@ export const HANDMARK_GATE_PRESENTATION = createSiteGatePresentation({
     <meta name="description" content="Private access to the Handmark proof of concept for human-made work verification.">
     <meta name="robots" content="noindex, nofollow">
     <meta name="theme-color" content="#000000">
-    <link rel="icon" href="/assets/handmark-symbol.svg?v=20260603-2" type="image/svg+xml">
+    <link rel="icon" href="${development ? HANDMARK_DEVELOPMENT_FAVICON : '/assets/handmark-symbol.svg?v=20260603-2'}" type="image/svg+xml">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body class="login-screen">
@@ -42,4 +45,5 @@ export const HANDMARK_GATE_PRESENTATION = createSiteGatePresentation({
     </main>
   </body>
 </html>`,
-});
+  });
+}

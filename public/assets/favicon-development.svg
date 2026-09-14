@@ -1,8 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-  <g transform="matrix(0.183594 0 0 0.183594 0.5 3.375)">
-    <path fill="none" stroke="#ff980a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M18 22v15c0 13 9 22 22 22 10 0 18-8 18-18V25M26 39V9M34 39V6M42 39V10M50 38V17M22 46c3 6 9 10 17 9" />
-    <path fill="none" stroke="#ff980a" stroke-width="4.2" d="M41.5 42a7.5 7.5 0 1 1-15 0a7.5 7.5 0 1 1 15 0" />
-    <path fill="#ff980a" d="M36.1 42a2.1 2.1 0 1 1-4.2 0a2.1 2.1 0 1 1 4.2 0" />
-  </g>
-  <path fill="#ff980a" d="M10.5 0H16V5.5h-1.75V1.75H10.5Z" />
+  <image width="16" height="16" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPgogIDx0aXRsZSBpZD0idGl0bGUiPkhhbmRtYXJrIHN5bWJvbCBkYXJrPC90aXRsZT4KICA8ZGVzYyBpZD0iZGVzYyI+QSBibGFjayBoYW5kIG1hcmsgd2l0aCBhIGNpcmN1bGFyIHBhbG0uPC9kZXNjPgogIDxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjEwIiBmaWxsPSIjZjZmMWU4Ii8+CiAgPGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMTUxNTE1IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogICAgPHBhdGggZD0iTTE4IDI0djEzYzAgMTMgOSAyMiAyMiAyMiAxMCAwIDE4LTggMTgtMThWMjUiIHN0cm9rZS13aWR0aD0iNC43Ii8+CiAgICA8cGF0aCBkPSJNMTggMjR2LTIiIHN0cm9rZS13aWR0aD0iNC43Ii8+CiAgICA8cGF0aCBkPSJNMjYgMzlWOSIgc3Ryb2tlLXdpZHRoPSI1LjQiLz4KICAgIDxwYXRoIGQ9Ik0zNCAzOVY2IiBzdHJva2Utd2lkdGg9IjUuNCIvPgogICAgPHBhdGggZD0iTTQyIDM5VjEwIiBzdHJva2Utd2lkdGg9IjUuNCIvPgogICAgPHBhdGggZD0iTTUwIDM4VjE3IiBzdHJva2Utd2lkdGg9IjUuNCIvPgogICAgPHBhdGggZD0iTTIyIDQ2YzMgNiA5IDEwIDE3IDkiIHN0cm9rZS13aWR0aD0iMy44Ii8+CiAgICA8Y2lyY2xlIGN4PSIzNCIgY3k9IjQyIiByPSI3LjUiIHN0cm9rZS13aWR0aD0iNC4yIi8+CiAgICA8Y2lyY2xlIGN4PSIzNCIgY3k9IjQyIiByPSIyLjEiIGZpbGw9IiMxNTE1MTUiIHN0cm9rZT0ibm9uZSIvPgogIDwvZz4KPC9zdmc+Cg==" />
+  <circle cx="13.5" cy="2.5" r="2" fill="#ff980a" />
 </svg>

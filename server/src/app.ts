@@ -34,6 +34,7 @@ import {
   type ApplicationServiceOptions,
 } from './application-service.js';
 import {
+  HANDMARK_DEVELOPMENT_FAVICON,
   HANDMARK_GATE_COOKIE,
   HANDMARK_GATE_MAX_AGE_SECONDS,
   HANDMARK_GATE_PATH,
@@ -42,7 +43,7 @@ import {
 } from './constants.js';
 import { mountHandmarkBrowser } from './browser-serving.js';
 import type { HandmarkEnvironment } from './environment.js';
-import { HANDMARK_GATE_PRESENTATION } from './gate-presentation.js';
+import { createHandmarkGatePresentation } from './gate-presentation.js';
 import { handmarkLog } from './logging.js';
 
 export interface HandmarkApplicationOptions {
@@ -79,13 +80,16 @@ export function createHandmarkApplication({
   if (identity) app.get(SERVER_IDENTITY_PATH, serverReleaseIdentityMiddleware(identity));
   app.use('/api', noStoreHeader());
 
+  const development = environment.execution.executionScope === 'development';
   const gate = createSiteGate({
     cookieName: HANDMARK_GATE_COOKIE,
     gatePath: HANDMARK_GATE_PATH,
     maxAgeSeconds: HANDMARK_GATE_MAX_AGE_SECONDS,
     password: environment.gatePassword,
-    presentation: HANDMARK_GATE_PRESENTATION,
-    publicPaths: HANDMARK_GATE_PUBLIC_PATHS,
+    presentation: createHandmarkGatePresentation(development),
+    publicPaths: development
+      ? [...HANDMARK_GATE_PUBLIC_PATHS, HANDMARK_DEVELOPMENT_FAVICON]
+      : HANDMARK_GATE_PUBLIC_PATHS,
     secret: environment.sessionSecret,
     siteName: 'Handmark',
   });

@@ -4,6 +4,7 @@ export const HANDMARK_WWW_ORIGIN = 'https://www.handmark.io';
 
 export const HANDMARK_GATE_COOKIE = 'hm_session';
 export const HANDMARK_GATE_PATH = '/login';
+export const HANDMARK_DEVELOPMENT_FAVICON = '/assets/favicon-development.svg';
 export const HANDMARK_GATE_MAX_AGE_SECONDS = 12 * 60 * 60;
 
 export const APPLICATION_RETENTION_DAYS = 90;
