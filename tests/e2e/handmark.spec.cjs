@@ -367,7 +367,8 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   await expect(page.getByRole('link', { name: 'Why', exact: true })).toBeVisible();
   const drawer = page.getByRole('dialog', { name: 'Menu', exact: true });
   await expect(drawer).toBeVisible();
-  await expect(drawer.getByRole('button', { name: 'Close menu' })).toBeFocused();
+  // The shared masthead uses one toggle, preserving Handmark's accessible label when open.
+  await expect(drawer.getByRole('button', { name: 'Primary menu', exact: true })).toBeFocused();
   await expect(page.getByRole('link', { name: 'Apply for Handmark' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Why', exact: true }).click();
   await expect(mobileMenu).toHaveAttribute('aria-expanded', 'false');
@@ -400,7 +401,7 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   expect(await missingAsset.text()).toBe('Asset not found');
 
   await mobileMenu.click();
-  await drawer.getByRole('button', { name: 'Close menu' }).click();
+  await drawer.getByRole('button', { name: 'Primary menu', exact: true }).click();
   await expect(drawer).toBeHidden();
   await expect(mobileMenu).toBeFocused();
   await page.getByRole('button', { name: 'Log out' }).click();
