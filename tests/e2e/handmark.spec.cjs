@@ -411,6 +411,57 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
   expect(consoleErrors).toEqual([]);
 });
 
+test('responsive navigation stays within the viewport before and after scrolling', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/`);
+  await page.getByLabel('Access password').fill(password);
+  await page.getByRole('button', { name: 'Enter Handmark' }).click();
+  await expect(page).toHaveURL(`${baseUrl}/`);
+
+  const toggle = page.getByRole('button', { name: 'Primary menu', exact: true });
+  const drawer = page.getByRole('dialog', { name: 'Menu', exact: true });
+  for (const viewport of [
+    { width: 320, height: 640 },
+    { width: 390, height: 844 },
+    { width: 667, height: 375 },
+    { width: 719, height: 600 },
+  ]) {
+    await page.setViewportSize(viewport);
+    for (const scrollTop of [0, 1200]) {
+      await page.evaluate((top) => window.scrollTo({ top, behavior: 'instant' }), scrollTop);
+      await expect(toggle).toBeInViewport({ ratio: 1 });
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        .toBe(true);
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(toggle).toBeInViewport({ ratio: 1 });
+      await expect(drawer).toBeInViewport({ ratio: 1 });
+      for (const label of ['Why', 'Proof', 'Standard', 'Membership']) {
+        await expect(drawer.getByRole('link', { name: label, exact: true })).toBeInViewport({
+          ratio: 1,
+        });
+      }
+      await page.screenshot({
+        path: testInfo.outputPath(`menu-${viewport.width}-${scrollTop}.png`),
+      });
+      await toggle.press('Escape');
+      await expect(drawer).toBeHidden();
+      await expect(toggle).toBeFocused();
+    }
+  }
+
+  await toggle.click();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(drawer).toBeHidden();
+  await expect(toggle).toBeHidden();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(toggle).toBeInViewport({ ratio: 1 });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+});
+
 async function expectJsonError(response, status, code, message) {
   expect(response.status()).toBe(status);
   expect(response.headers()['cache-control']).toBe('private, no-store');
