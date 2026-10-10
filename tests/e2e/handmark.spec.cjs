@@ -118,6 +118,11 @@ test('Handmark night-mode membership flow', async ({ page, request }) => {
     maxRedirects: 0,
   });
   expect(publicLogo.status()).toBe(200);
+  const editorialFont = await request.get(`${baseUrl}/assets/fonts/Literata.woff2`, {
+    maxRedirects: 0,
+  });
+  expect(editorialFont.status()).toBe(200);
+  expect(editorialFont.headers()['content-type']).toContain('font/woff2');
   for (const lockedPath of [
     '/assets/handmark-stamp.svg',
     '/assets/handmark-seal.svg',

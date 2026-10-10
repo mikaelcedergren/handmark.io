@@ -26,10 +26,9 @@ export const HANDMARK_GATE_PUBLIC_PATHS = Object.freeze([
   '/assets/handmark-logo.svg',
   '/assets/handmark-symbol.svg',
   '/assets/fonts/ArchivoNarrow.woff2',
-  '/assets/fonts/DMSerifDisplay.woff2',
+  '/assets/fonts/Literata.woff2',
   '/assets/fonts/InterVariable-Italic.woff2',
   '/assets/fonts/InterVariable.woff2',
   '/assets/fonts/PlusJakartaSans.woff2',
   '/assets/fonts/RobotoMono.woff2',
-  '/assets/fonts/Rubik.woff2',
 ] as const);

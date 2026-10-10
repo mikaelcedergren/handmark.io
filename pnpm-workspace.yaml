@@ -22,4 +22,4 @@ allowBuilds:
   msgpackr-extract: true
 
 patchedDependencies:
-  '@angular/build@22.0.8': patches/@angular__build@22.0.8.patch
+  '@angular/build@22.2.2': patches/@angular__build@22.2.2.patch
