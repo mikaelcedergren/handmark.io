@@ -58,6 +58,11 @@ data. Follow the real-data development contract in [SERVER-STANDARD.md](../SERVE
 
 ## Framework boundary
 
+Start framework-guided product work with the installed
+[`ai/design/00-start-here.md`](node_modules/@mikaelcedergren/cx-framework/ai/design/00-start-here.md).
+Use the packaged skills discovered through `.agents/skills/`; their implementation stays in the
+installed package.
+
 Cortex is the source, `cx-framework` is the portable published contract, and Handmark is a
 consumer.
 
