@@ -2,14 +2,12 @@
 //
 // Structure only: this file arranges the framework's tokens and utilities into
 // Handmark's page, proof preview, application form, footer, and login screen.
-// Every value here is a framework token reference — no local colours, spacing
-// values, type sizes, radii, shadows, or breakpoints are invented. Interactive
+// Shared visual choices use framework tokens directly; brand artwork and
+// exceptional control geometry keep their dimensions in this owner. Interactive
 // controls are framework primitives (cx-button, cx-text-field, cx-text-area,
 // cx-checkbox, cx-card), so this file carries no button or input skin.
 
 @use '@mikaelcedergren/cx-framework/tokens/breakpoints-scale' as bp;
-
-$mobile-max: bp.$mobile - 1px;
 
 // ---------------------------------------------------------------------------
 // Semantic element defaults
@@ -44,7 +42,7 @@ h3 {
   color: var(--ink);
   font-size: var(--font-size-title-2);
   font-weight: var(--font-weight-bold);
-  line-height: var(--line-height-heading);
+  line-height: var(--line-height-tight);
 }
 
 p {
@@ -60,7 +58,7 @@ p {
 
 %column {
   width: 100%;
-  max-width: var(--measure-xl);
+  max-width: var(--content-width-xl);
   margin-inline: auto;
 }
 
@@ -75,8 +73,8 @@ p {
 }
 
 .login-mark {
-  width: var(--icon-size-xl);
-  height: var(--icon-size-xl);
+  width: 32px;
+  height: 32px;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,9 +157,9 @@ p {
   position: absolute;
   top: 0.6em;
   left: 0;
-  width: var(--space-xs);
-  height: var(--space-xs);
-  border-radius: var(--radius-pill);
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-full);
   background: var(--accent);
   content: '';
 }
@@ -191,8 +189,8 @@ p {
 }
 
 .proof-page-top img {
-  width: var(--icon-size-xl);
-  height: var(--icon-size-xl);
+  width: 32px;
+  height: 32px;
 }
 
 .proof-page-hero {
@@ -212,8 +210,8 @@ p {
 }
 
 .proof-stamp {
-  width: var(--space-2xl);
-  height: var(--space-2xl);
+  width: 64px;
+  height: 64px;
 }
 
 .proof-fields {
@@ -247,7 +245,7 @@ p {
 
 .badge-preview {
   width: max-content;
-  min-width: var(--measure-sm);
+  min-width: var(--content-width-sm);
   max-width: 100%;
   margin-left: auto;
 }
@@ -367,7 +365,7 @@ p {
   display: grid;
   gap: var(--space-sm);
   width: 100%;
-  max-width: var(--measure-sm);
+  max-width: var(--content-width-sm);
   margin-inline: auto;
   padding: var(--space-md);
   border: var(--line);
@@ -384,8 +382,8 @@ p {
 .work-preview-top span,
 .work-preview-lines span {
   display: block;
-  height: var(--space-xs);
-  border-radius: var(--radius-pill);
+  height: 4px;
+  border-radius: var(--radius-full);
   background: var(--opacity-mid);
 }
 
@@ -401,7 +399,7 @@ p {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-xs);
-  height: var(--space-2xl);
+  height: 64px;
 }
 
 .work-preview-image span {
@@ -445,9 +443,9 @@ p {
 }
 
 .verified-row img {
-  width: var(--controller-size-large);
-  height: var(--controller-size-large);
-  border-radius: var(--radius-pill);
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
 }
 
 .proof-card {
@@ -547,7 +545,7 @@ p {
   color: var(--ink);
   font-size: var(--font-size-title-1);
   font-weight: var(--font-weight-bold);
-  line-height: var(--line-height-heading);
+  line-height: var(--line-height-tight);
 }
 
 .price span {
@@ -579,7 +577,7 @@ p {
 
 .application-form {
   width: 100%;
-  max-width: var(--measure-md);
+  max-width: var(--content-width-md);
 }
 
 .application-card-content {
@@ -701,7 +699,7 @@ p {
   display: grid;
   gap: var(--space-md);
   width: 100%;
-  max-width: var(--measure-sm);
+  max-width: var(--content-width-sm);
 }
 
 .login-panel {
@@ -726,7 +724,7 @@ p {
 // Login runs on the static gate page, before the Angular app and its
 // primitives exist, so the single password field and submit button cannot be
 // cx-text-field / cx-button. These rules compose the same framework tokens
-// those primitives use — no local design values — to keep the gate visually
+// those primitives use, with an explicit 48px control height, to keep the gate visually
 // part of the system.
 .login-label {
   color: var(--ink);
@@ -736,7 +734,7 @@ p {
 
 .login-input {
   width: 100%;
-  min-height: var(--controller-size-large);
+  min-height: 48px;
   padding: 0 var(--space-md);
   border: var(--line);
   border-radius: var(--radius-md);
@@ -753,7 +751,7 @@ p {
 
 .login-submit {
   display: inline-flex;
-  min-height: var(--controller-size-large);
+  min-height: 48px;
   align-items: center;
   justify-content: center;
   margin-top: var(--space-sm);
@@ -789,7 +787,7 @@ p {
 // Responsive — one breakpoint, matching the framework mobile boundary
 // ---------------------------------------------------------------------------
 
-@media (max-width: $mobile-max) {
+@media (max-width: #{bp.$mobile - 1px}) {
   .hero-grid,
   .conversion-inner,
   .section-grid,
